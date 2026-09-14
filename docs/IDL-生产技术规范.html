@@ -1,0 +1,994 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>IDL生产技术规范</title><style>
+    :root{color-scheme:light;--ink:#18202b;--muted:#5c6674;--line:#d8dfe6;--blue:#1c4b73}
+    *{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:28px}
+    body{margin:0;background:#f5f6f8;color:var(--ink);font:16px/1.85 "Microsoft YaHei","PingFang SC",system-ui,sans-serif}
+    .layout{display:grid;grid-template-columns:264px minmax(0,1000px);max-width:1320px;margin:auto}
+    nav{position:sticky;top:0;align-self:start;height:100vh;overflow:auto;padding:30px 24px;font-size:13px}
+    nav .brand{font-size:17px;font-weight:700;color:var(--ink);margin-bottom:16px}
+    nav a{display:block;padding:5px 0;text-decoration:none;color:var(--muted);line-height:1.55}
+    nav a:hover{color:var(--blue)}main{min-width:0;background:white;padding:58px 62px 80px;box-shadow:0 0 0 1px #e5e8ec}
+    h1,h2,h3{color:#000;line-height:1.4;letter-spacing:0}h1{font-size:34px;margin:0 0 16px}
+    h2{font-size:24px;margin:48px 0 18px}h3{font-size:19px;margin:32px 0 12px}
+    p{margin:16px 0}a{color:var(--blue);text-underline-offset:3px;overflow-wrap:anywhere}
+    code{font:0.9em/1.55 Consolas,"Microsoft YaHei",monospace;overflow-wrap:anywhere}
+    p code,td code,li code{background:#f1f3f6;padding:2px 4px;border-radius:3px}
+    pre{padding:20px 22px;background:#f2f4f6;border:1px solid var(--line);border-radius:5px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.55;font-size:14px}
+    .table-wrap{overflow-x:auto;margin:22px 0 26px}table{width:100%;border-collapse:collapse;font-size:14px;line-height:1.7;table-layout:fixed}
+    th,td{border:1px solid var(--line);padding:12px 14px;vertical-align:middle;overflow-wrap:anywhere}
+    th{background:#e8eef4;color:#000;text-align:left;font-weight:650}tbody tr:nth-child(even){background:#fafbfc}
+    ul,ol{padding-left:1.6em}li{margin:9px 0}details{margin:24px 0}summary{cursor:pointer;font-weight:650}
+    .meta{font-size:13px;color:var(--muted)}.toolbar{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;margin-bottom:34px}
+    .toolbar a{padding:6px 10px;border:1px solid var(--line);border-radius:4px;text-decoration:none}
+    @media(max-width:980px){.layout{display:block}nav{position:static;height:auto;max-height:290px;border-bottom:1px solid var(--line);padding:22px}main{padding:32px 22px}h1{font-size:28px}h2{font-size:22px}th,td{padding:9px}table{font-size:13px}}
+    @media print{@page{size:A4;margin:18mm}body{background:#fff;font-size:10.5pt;line-height:1.65}.layout{display:block;max-width:none}nav,.toolbar{display:none}main{box-shadow:none;padding:0}h1{font-size:24pt}h2{font-size:17pt;break-after:avoid}h3{break-after:avoid}p{orphans:3;widows:3}thead{display:table-header-group}tr{break-inside:avoid}pre,td,th{font-size:9pt}pre{white-space:pre-wrap}a{color:inherit}details:not([open]){display:none}}
+    </style></head><body><div class="layout"><nav aria-label="文档目录"><div class="brand">IDL生产技术规范</div><p class="meta">OpenAPI 3.1.0<br>版本 1.0.0 · 2026年9月14日</p><a href="#section-1">1 适用范围与技术决策</a><a href="#section-2">2 契约结构与权威来源</a><a href="#section-3">3 接入顺序与环境配置</a><a href="#section-4">4 仓库与日常工作流</a><a href="#section-5">5 URL与请求设计</a><a href="#section-6">6 数据建模规则</a><a href="#section-7">7 Project字段与空值语义</a><a href="#section-8">8 响应与错误处理</a><a href="#section-9">9 服务端实现流程</a><a href="#section-10">10 前端接入与生成代码</a><a href="#section-11">11 扩展接口的约定</a><a href="#section-12">12 安全与认证</a><a href="#section-13">13 幂等与并发与故障恢复</a><a href="#section-14">14 ETag 与局部更新</a><a href="#section-15">15 游标分页与一致性</a><a href="#section-16">16 超时与重试与限流</a><a href="#section-17">17 可观测性与敏感数据</a><a href="#section-18">18 兼容性与发布回滚</a><a href="#section-19">19 测试门禁与责任清单</a><a href="#section-20">20 工程执行与示例调用</a><a href="#section-21">21 生产验收用例矩阵</a><a href="#section-22">22 版本治理与变更记录</a><a href="#section-23">23 常见故障处理手册</a><a href="#section-24">24 参考资料</a><a href="#contract-source">完整契约源文件</a></nav><main><div class="toolbar"><a href="IDL-生产技术规范.md" download>Markdown 源文档</a><a href="../contracts/openapi.yaml" download>OpenAPI 契约</a><a href="../README.md">工程使用说明</a></div><h1 id="heading-0">IDL生产技术规范</h1>
+<p>基于 OpenAPI 的前后端接口契约设计与交付手册</p>
+<p>文档版本 1.0.0　技术基线 OpenAPI 3.1.0　编制日期 2026年9月14日</p>
+<p>本规范采用 OpenAPI 描述 HTTP JSON 接口，以仓库中的契约文件作为请求、响应和代码生成的共同依据。前端、后端、测试和平台团队围绕同一份定义完成评审、开发、验证及发布，减少字段不一致、错误处理分歧和接口升级中断。</p>
+<p>本文可作为团队生产开发规范直接纳入仓库。配套工程提供完整 Project 资源契约、正反例、静态校验、TypeScript 调用样例和 CI 工作流。生产接入时，实施团队应完成第 3 节的环境配置及上线验收，将实际业务服务纳入契约测试。文中的“必须”“应当”“可以”分别表示本方案的强制规则、推荐规则和可选规则；引用标准的要求以原标准为准。</p>
+<h2 id="section-1">1 适用范围与技术决策</h2>
+<p>本规范适用于浏览器或移动端访问业务 HTTP API，以及网关后的同步 JSON 服务。服务端可以使用 Java、Go、Python、Node.js 或其他技术栈。示例使用项目管理业务说明完整接口生命周期，业务资源可以替换，契约规则应保持一致。</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">维度</th><th scope="col">本方案选择</th><th scope="col">工程约束</th></tr></thead><tbody><tr><td>传输</td><td>HTTPS 上的 HTTP API</td><td>客户端使用 HTTPS 服务地址</td></tr><tr><td>契约</td><td>OpenAPI 3.1.0</td><td>所有操作与数据结构纳入版本管理</td></tr><tr><td>数据约束</td><td>JSON Schema 2020-12 兼容子集</td><td>只采用已通过当前工具链验证的关键字</td></tr><tr><td>文档载体</td><td>YAML 源文件</td><td>YAML 只用于描述契约，线上请求体使用 JSON</td></tr><tr><td>前端类型</td><td>openapi-typescript</td><td>从契约生成，禁止手改生成文件</td></tr><tr><td>前端请求</td><td>openapi-fetch</td><td>认证获取与 UI 状态由应用管理</td></tr><tr><td>失败响应</td><td>Problem Details</td><td>使用 application/problem+json</td></tr><tr><td>浏览器认证</td><td>OAuth2 授权码流程与 PKCE</td><td>由受信任的身份服务签发访问令牌</td></tr><tr><td>版本演进</td><td>路径主版本与契约语义版本</td><td>先部署兼容服务端，再启用新客户端能力</td></tr></tbody></table></div>
+<p>OpenAPI 是 HTTP API 的接口描述规范，可用于文档、代码生成和测试工具。这里固定 3.1.0 作为可复现基线，升级规范版本时，应同时验证解析器、生成器、网关与测试工具。本文件中的 <code>openapi</code> 是规范版本，契约的 <code>info.version</code> 是 API 文档版本，二者分别维护。<a href="https://spec.openapis.org/oas/v3.1.0.html">OpenAPI 规范</a></p>
+<p>已有 gRPC 服务可以继续使用 Protobuf，GraphQL 服务可以继续使用 SDL。若向浏览器提供 REST 网关，应单独维护外部 HTTP 契约和明确的内部字段映射。消息队列、WebSocket、文件下载和事件流应建立对应的专门契约及验收规则；不要为了统一格式把所有通信模型转换为本例的 CRUD。</p>
+<h2 id="section-2">2 契约结构与权威来源</h2>
+<p><code>contracts/openapi.yaml</code> 是接口结构的权威来源；本手册规定其业务语义和实施方式。若二者出现冲突，应修正同一个变更集中的契约、示例、客户端和文档后再合并。生产系统的行为必须与发布的契约版本一致。</p>
+<p>契约至少包含 API 标题、版本、服务地址、操作路径、唯一 <code>operationId</code>、参数位置与约束、请求媒体类型、成功与失败响应、认证方案及权限范围。每个公开字段应说明单位、缺省行为、空值语义、边界和至少一个示例。所有 <code>$ref</code> 必须可解析，外部网络引用不得成为构建依赖。</p>
+<pre aria-label="text"><code>需求与业务规则
+    → OpenAPI 契约及示例
+    → 前后端共同评审
+    → 规范校验与代码生成
+    → 服务实现及客户端接入
+    → 行为测试与兼容性评审
+    → 契约和服务一起发布</code></pre>
+<p>评审者应区分四个层次：语法合法、数据结构合法、业务行为正确、生产运行达标。静态校验通过只能证明其检查范围内的定义成立。<code>security</code> 声明不会自动完成鉴权，<code>default</code> 不会自动写入请求，<code>format</code> 也需要运行时校验器配置才能执行。</p>
+<p>JSON Schema 的 <code>required</code> 决定属性是否必须出现，<code>type</code> 决定其允许值；出现且为 <code>null</code> 与完全缺省不同。<code>additionalProperties</code> 决定未声明属性的处理方式。<a href="https://json-schema.org/understanding-json-schema/reference/object">对象约束</a> <a href="https://json-schema.org/understanding-json-schema/reference/type">类型约束</a></p>
+<h2 id="section-3">3 接入顺序与环境配置</h2>
+<p>首次接入应按以下顺序完成。负责人员是团队角色，每个项目应在内部发布记录中填入具体人员或值班组。</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">阶段</th><th scope="col">必须完成的工作</th><th scope="col">负责角色</th><th scope="col">完成证据</th></tr></thead><tbody><tr><td>契约初始化</td><td>替换资源与字段，确认所有业务错误</td><td>API 负责人及前端负责人</td><td>契约评审记录</td></tr><tr><td>环境配置</td><td>设置服务域名与 OAuth 参数</td><td>平台及身份团队</td><td>环境配置清单</td></tr><tr><td>服务实现</td><td>校验、授权、事务、幂等和并发控制</td><td>后端负责人</td><td>集成测试结果</td></tr><tr><td>客户端接入</td><td>生成类型、设置令牌提供函数、处理错误</td><td>前端负责人</td><td>浏览器端测试结果</td></tr><tr><td>交付验证</td><td>执行 CI 及目标环境验收</td><td>测试负责人</td><td>发布报告</td></tr><tr><td>上线运行</td><td>灰度、监控、回滚与值班交接</td><td>发布负责人</td><td>发布记录及回滚演练</td></tr></tbody></table></div>
+<p>环境配置必须包括 API 的 HTTPS 根地址、OAuth issuer、authorization URL、token URL、audience、public client ID、精确注册的 redirect URI、所需 scopes、CORS 来源名单、超时与重试预算、幂等保存周期、cursor 签名密钥及轮换方式。示例中的 <code>api.example.com</code>、<code>auth.example.com</code> 和其他 example.com 地址是保留域名，部署前替换为实际受控地址。</p>
+<p>客户端不得内置 OAuth client secret；访问令牌、签名密钥与生产连接字符串不得进入契约、示例或前端构建产物。环境之间可以更换地址与配置，但同一个版本的接口结构应保持一致。域名替换也要通过 URL 与重定向配置检查。</p>
+<p>本仓库提供的快速开始命令及工具固定版本见 <code>README.md</code> 和 <code>docs/CONTRACT_PACKAGE.md</code>。在 Windows 中使用仓库虚拟环境的 <code>Scripts/python.exe</code>，在 Linux 中使用 <code>bin/python</code>。安装依赖后先验证契约，再生成类型并编译客户端，随后启动团队自己的后端服务执行接口验收。</p>
+<h2 id="section-4">4 仓库与日常工作流</h2>
+<pre aria-label="text"><code>contracts/openapi.yaml          接口定义
+contracts/fixtures.json         数据正反例
+scripts/verify_contract.py      契约与示例检查
+tests/                         校验器测试
+examples/typescript/            客户端与生成类型
+.github/workflows/contract.yml  持续集成
+docs/IDL-生产技术规范.md         团队规范正文
+docs/CONTRACT_PACKAGE.md        契约工具使用与覆盖范围</code></pre>
+<p>开发者从需求创建变更分支，先修改契约及正反例。后端评审资源语义、错误、权限和数据库影响；前端评审可用性、类型映射、错误展示和旧客户端兼容性。完成评审后可以并行开发。生成类型应与源契约一起提交，CI 检查重新生成后是否发生差异。</p>
+<p>一次变更必须同时包含必要的契约、数据样例、服务实现、客户端更新、行为测试和发布说明。对于分仓库系统，可以分多次部署，但发布记录必须包含对应契约版本与提交号。生成产物禁止手工修补；需要改变行为时应修改契约或客户端包装层。</p>
+<p>契约评审权限应通过仓库规则落实。团队可配置 CODEOWNERS 覆盖 <code>contracts/</code>、<code>examples/typescript/schema.d.ts</code> 与兼容性规则，并要求 API 与消费方至少各一名负责人参与。CI 中已实现的检查与需要由团队接入的检查在验证记录中分别列明。</p>
+<h2 id="section-5">5 URL与请求设计</h2>
+<p>资源路径使用复数名词和小写短横线形式，例如 <code>/v1/projects</code>。路径参数表示资源身份，查询参数表示过滤和分页。JSON 字段使用 lowerCamelCase，Schema 名称使用 PascalCase，<code>operationId</code> 使用稳定的动词加资源名，例如 <code>createProject</code>。已发布的 <code>operationId</code> 会影响生成 API，修改前必须评估调用方。</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">操作</th><th scope="col">方法与路径</th><th scope="col">成功响应</th><th scope="col">额外请求要求</th></tr></thead><tbody><tr><td>列出项目</td><td>GET /v1/projects</td><td>200 项目列表</td><td>projects:read</td></tr><tr><td>创建项目</td><td>POST /v1/projects</td><td>201 项目及 Location 和 ETag</td><td>projects:write 与 Idempotency-Key</td></tr><tr><td>读取项目</td><td>GET /v1/projects/{projectId}</td><td>200 项目及 ETag</td><td>projects:read</td></tr><tr><td>局部更新</td><td>PATCH /v1/projects/{projectId}</td><td>200 更新后项目及 ETag</td><td>projects:write 与 If-Match</td></tr><tr><td>删除项目</td><td>DELETE /v1/projects/{projectId}</td><td>204 无响应体</td><td>projects:write 与 If-Match</td></tr></tbody></table></div>
+<p>GET 不承载请求体且不得产生业务写入。创建使用 <code>application/json</code>；局部更新使用 <code>application/merge-patch+json</code>。接口不接受媒体类型不符的请求，返回 415。204 响应没有 JSON 数据，客户端不得强制对其解析 JSON。</p>
+<p>路径 UUID 验证失败、查询参数无法解析或 JSON 语法损坏按契约返回 400；JSON 可解析但请求对象不符合业务字段约束时返回 422。未知查询参数应拒绝，避免拼写错误静默改变查询行为；若某个框架默认忽略参数，需要额外实现这一规则。</p>
+<p>查询参数只接受文档列出的参数。重复的单值参数应返回 400；数组参数必须在契约中明确序列化规则。查询条件直接映射到预定义过滤项，SQL 排序字段和过滤操作使用服务端白名单。租户上下文从已校验身份及授权关系中确定。</p>
+<h2 id="section-6">6 数据建模规则</h2>
+<div class="table-wrap"><table><thead><tr><th scope="col">数据类别</th><th scope="col">表达方式</th><th scope="col">本方案规则</th></tr></thead><tbody><tr><td>资源标识</td><td>string 与 uuid format</td><td>不使用数据库自增数值作为跨语言 ID</td></tr><tr><td>时间点</td><td>string 与 date-time format</td><td>服务端统一输出 UTC 与 Z 后缀</td></tr><tr><td>日历日期</td><td>string 与 date format</td><td>明确是日期，不擅自补时区</td></tr><tr><td>计数与版本</td><td>有上下界的 integer</td><td>浏览器使用的整数不得超出安全整数范围</td></tr><tr><td>金额</td><td>十进制字符串或最小币种单位整数</td><td>必须说明币种、精度及舍入规则</td></tr><tr><td>状态</td><td>string</td><td>有限枚举必须定义未知值处理与升级策略</td></tr><tr><td>集合</td><td>array</td><td>用空数组表示无条目，限制请求数组长度</td></tr><tr><td>可空文本</td><td>type 为 string 和 null</td><td>区分缺省、空字符串与 null</td></tr></tbody></table></div>
+<p>线上 JSON 使用 UTF-8。整数超出 JavaScript 精确整数范围时，应改为十进制字符串传递；不允许 NaN、Infinity 或未定义值出现在 JSON 中。JSON 重复键应在解析阶段拒绝，避免各语言解析结果不同。<a href="https://www.rfc-editor.org/rfc/rfc8259.html">JSON 标准</a></p>
+<p>时间输出采用 RFC 3339 格式，例如 <code>2026-09-14T08:00:00Z</code>。本方案要求统一 UTC；精度在同一字段上固定，服务端保存精度与分页比较精度必须一致。<a href="https://www.rfc-editor.org/rfc/rfc3339.html">时间戳标准</a></p>
+<p>请求与响应使用独立 Schema。创建请求只接受可写字段；<code>id</code>、<code>createdAt</code>、<code>updatedAt</code>、<code>version</code> 由服务端生成，客户端提交这些字段应失败。请求对象设置 <code>additionalProperties: false</code>。响应允许增加字段，客户端读取自己认识的字段，但服务端序列化仍应使用明确的输出 DTO 白名单，避免泄露内部数据。</p>
+<p>不要直接把数据库实体当成 API Schema。字段的内部命名、索引和存储空值可以改变，只要公开契约与语义保持稳定。嵌套对象、数组长度及文本长度应有边界。字符串长度按 Unicode 码点计数，不以 JavaScript UTF-16 code unit 数量或用户感知字素数量替代；增加 emoji 与组合字符的边界样例。UI 显示宽度与用户感知字符数应单独考虑。</p>
+<p><code>format</code>、正则表达式和业务验证职责必须明确。JSON Schema 检查能验证 UUID 和结构，授权逻辑负责访问资格，领域逻辑负责诸如配额、唯一性与状态转换。默认值由服务端显式执行，测试覆盖应用后的值；日志只记录允许公开的非敏感配置值，不依赖生成器碰巧填充。</p>
+<p><code>allOf</code> 表示同时满足所有约束。团队应避免把关闭额外字段的基础 Schema 与新增字段机械组合，否则可能拒绝合法字段。需要多态时为各分支定义明确标识，并验证 <code>oneOf</code> 分支互斥；工具链未验证的复杂关键字应先补测试再采用。</p>
+<h2 id="section-7">7 Project字段与空值语义</h2>
+<div class="table-wrap"><table><thead><tr><th scope="col">字段</th><th scope="col">响应类型</th><th scope="col">创建规则</th><th scope="col">更新规则</th></tr></thead><tbody><tr><td>id</td><td>UUID 字符串</td><td>服务端生成</td><td>不可修改</td></tr><tr><td>displayName</td><td>非空字符串</td><td>必填且满足长度约束</td><td>缺省不变，null 不合法</td></tr><tr><td>description</td><td>字符串或 null</td><td>可选，缺省规范化为 null</td><td>缺省不变，null 清除</td></tr><tr><td>createdAt</td><td>UTC 时间字符串</td><td>服务端生成</td><td>不可修改</td></tr><tr><td>updatedAt</td><td>UTC 时间字符串</td><td>服务端生成</td><td>成功变更时更新</td></tr><tr><td>version</td><td>正整数</td><td>服务端初始化</td><td>与并发版本控制一起递增</td></tr></tbody></table></div>
+<p>准确的长度、数值上界和正则以配套 YAML 为准。<code>displayName</code> 长度为 1 至 100 个码点且至少含一个非空白字符，不自动 trim；首尾空格可以保留。空白字符采用契约显式列举的码点范围，包含 U+FEFF、U+0085 和 U+001C 等边界字符，不依赖各语言对 <code>\S</code> 的不同解释。<code>description</code> 最多 2000 个码点。若业务要求禁止首尾空格，应在契约与校验逻辑中同步添加规则。显示名称不承担唯一业务标识职责；若增加唯一约束，应补充作用范围和冲突错误。</p>
+<p>下面是局部更新请求的语义：</p>
+<pre aria-label="json"><code>{&quot;displayName&quot;: &quot;新版项目名称&quot;}</code></pre>
+<p>只更新名称，保留原描述。以下请求清除描述：</p>
+<pre aria-label="json"><code>{&quot;description&quot;: null}</code></pre>
+<p>Merge Patch 首先以 null 移除表示中的成员，业务层据此清除持久化描述；返回公开 Project 表示时，规范化为必有 <code>description: null</code>。空对象 <code>{}</code> 被本方案拒绝。数组如未来纳入 Merge Patch，应明确整个数组替换语义；需要按元素更新时另设资源操作。<a href="https://www.rfc-editor.org/rfc/rfc7396.html">Merge Patch 标准</a></p>
+<h2 id="section-8">8 响应与错误处理</h2>
+<p>成功响应直接返回资源对象或列表对象。列表包含 <code>items</code> 和 <code>nextCursor</code>，最后一页 <code>nextCursor</code> 为 null。创建返回 201 并给出新资源 <code>Location</code>，读取与更新返回 ETag。业务失败使用对应 HTTP 状态码和 Problem Details，避免用 HTTP 200 包裹错误。</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">HTTP状态</th><th scope="col">本方案含义</th><th scope="col">客户端动作</th></tr></thead><tbody><tr><td>400</td><td>语法或参数格式错误</td><td>修正请求后重试</td></tr><tr><td>401</td><td>缺少或无效身份凭证</td><td>按认证流程重新获取身份</td></tr><tr><td>403</td><td>已认证但权限不足</td><td>提示无权限，停止自动重试</td></tr><tr><td>404</td><td>资源不存在或按策略隐藏</td><td>刷新列表或提示不可用</td></tr><tr><td>409</td><td>业务冲突或幂等处理冲突</td><td>按稳定错误码处理</td></tr><tr><td>412</td><td>当前资源版本与 If-Match 不符</td><td>重新读取并解决编辑冲突</td></tr><tr><td>415</td><td>请求媒体类型不受支持</td><td>修正 Content-Type</td></tr><tr><td>422</td><td>字段或领域输入不符合约束</td><td>展示对应字段错误</td></tr><tr><td>428</td><td>更新或删除缺少条件头</td><td>读取资源后提供 If-Match</td></tr><tr><td>429</td><td>达到请求限制</td><td>遵守 Retry-After 与重试预算</td></tr><tr><td>500</td><td>未预期的服务内部失败</td><td>展示可追踪失败并记录关联信息</td></tr><tr><td>503</td><td>临时服务不可用</td><td>在安全条件下延后尝试</td></tr></tbody></table></div>
+<p>每个操作实际承诺的状态码应与 YAML 中的 <code>responses</code> 一致。API 层能够处理的失败按契约输出；CDN、代理或连接层仍可能返回 HTML、纯文本、空响应或直接断连，客户端必须有解析失败和网络失败分支。</p>
+<p>Problem Details 使用 <code>type</code> 标识问题类别，<code>title</code> 表示稳定的类别描述，<code>status</code> 与 HTTP 状态一致，<code>detail</code> 描述本次安全可公开的原因，<code>instance</code> 如提供则用于定位本次问题。本方案增加稳定 <code>code</code>、请求关联用 <code>traceId</code> 和字段错误集合 <code>errors</code>。422 响应必须包含非空 <code>errors</code>，其他错误中可选。前端按 <code>code</code> 处理逻辑，禁止解析自然语言 <code>detail</code> 推断业务分支。<a href="https://www.rfc-editor.org/rfc/rfc9457.html">Problem Details 标准</a></p>
+<p>API 所有响应声明 <code>Cache-Control: no-store, no-transform</code> 与 <code>X-Request-Id</code>。本方案将请求关联标识编码为非全零的 32 位小写十六进制串；新生成的错误体 <code>traceId</code> 与当前响应头的关联标识保持一致。终态错误的幂等回放保留正文中的原 traceId，响应头使用本次请求的新标识，日志关联二者。</p>
+<p>字段错误定位方式与字段名称统一，嵌套路径采用契约规定的指针形式。错误不返回 SQL、堆栈、服务密钥、令牌、内部路径或未经处理的用户输入。UI 展示错误使用文本渲染，服务端返回的内容不得直接作为 HTML 插入。</p>
+<h2 id="section-9">9 服务端实现流程</h2>
+<p>请求首先经过网关的连接与大小限制、来源策略及基础限流；进入业务服务后验证身份与权限，再完成参数解码与结构校验。POST 的幂等查重在会随时间变化的配额、唯一性等领域规则之前完成，以免已经成功的提交因后续状态变化而无法回放。对于带条件的请求，应按 HTTP 前置条件处理规则，在常规检查通过后、实际变更之前检查版本。应以稳定策略决定错误优先级，避免通过错误信息泄露资源是否存在。</p>
+<p>后端需要实现以下流程，并在集成测试中验证每一步的边界：</p>
+<ol><li>解析受支持的媒体类型、路径、查询和请求体，拒绝重复 JSON 键与非法编码。</li><li>校验令牌签发方、受众、有效期与权限；确定主体及租户授权上下文。</li><li>验证 Schema，建立 API 输入与领域对象的明确映射。</li><li>POST 先做幂等查重，仅新请求执行会变化的领域规则；PATCH 与 DELETE 在常规检查通过后完成 ETag 条件检查。</li><li>在数据库事务中执行授权范围内的写入，必要事件使用事务发件箱。</li><li>将持久化结果映射为公开 DTO，填写状态、ETag、Location 等响应头。</li><li>记录结构化访问日志、指标及审计事件，敏感信息按字段规则脱敏。</li></ol>
+<p>Schema 校验建议在测试和预发布环境覆盖全部请求与响应。在生产请求入口持续校验输入；对于内部构造的响应，可根据开销采用抽样或异步检查，但必须确保异常不会导致敏感响应进入日志。响应漂移告警要包含 operationId 与契约版本，便于定位。</p>
+<p>数据库与外部系统失败需保留原子性。更新或删除必须将权限条件、资源 ID 和版本条件放在同一个受控事务边界内，不能先检查版本再执行无条件写入。外部通知、付款等不可回滚副作用需要单独设计幂等与补偿，不可仅凭 API 返回 500 就断定操作未发生。</p>
+<h2 id="section-10">10 前端接入与生成代码</h2>
+<p>前端从契约生成 TypeScript 声明，再由薄包装层管理基础地址、访问令牌、超时、错误和业务返回值。配套 <code>examples/typescript/client.ts</code> 展示五种资源操作；其调用方式和测试命令见同目录 README。<code>getAccessToken</code> 由应用注入，客户端库不保存登录凭证，也不承担 OAuth 登录 UI。</p>
+<p>openapi-typescript 支持从 OpenAPI 生成声明，openapi-fetch 提供基于这些声明的请求类型推导。TypeScript 类型检查发生在编译期，生成类型不会自动校验线上 JSON；需要运行时保证时，应在边界增加经过验证的 Schema 校验器。<a href="https://openapi-ts.dev/introduction">类型生成说明</a> <a href="https://openapi-ts.dev/openapi-fetch/">请求客户端说明</a></p>
+<p>创建操作的幂等键属于一次业务提交。应用应在第一次发送前生成并保存它，在同一提交的超时、断线或重复点击恢复中复用；用户确认开始新的业务提交时才生成新键。样例要求调用者显式传入 key，避免请求包装器在每次重试时悄悄换键。</p>
+<p>编辑界面读取 Project 时同时保存 ETag。提交 PATCH 时使用该 ETag；遇到 412 应重新读取并让用户解决差异，禁止用最新 ETag 自动覆盖其他人的变更。DELETE 遇到失败也应按具体状态重新读取和确认结果。</p>
+<p>UI 应区分取消、网络不可达、超时、认证失败、输入错误、版本冲突和服务器失败。更新请求超时后，界面应表现为“结果待确认”，通过已知资源 ID 重新读取核对。POST 在约定有效窗口内用同 key 与同语义请求取得终态回放；超过窗口或仍然未知时，通过运营工具关联幂等记录并恢复，本契约未提供独立幂等查询端点。用户切换页面时取消旧读取请求，防止迟到响应覆盖当前页面数据。</p>
+<h2 id="section-11">11 扩展接口的约定</h2>
+<p>批量操作需要给出条数上限、原子性、条目关联标识和部分失败格式，并明确幂等粒度。异步长任务应返回任务资源与查询位置，定义排队、运行、完成、失败、取消状态和结果保留期限；202 表示已接受处理，不能当作业务成功完成。</p>
+<p>文件上传宜采用受限的对象存储上传流程，约定大小、类型、校验和、对象归属、扫描状态及下载权限。上传成功和业务对象可用应有明确边界。下载与事件流采用各自媒体类型和客户端处理，不套用本例 JSON 对象解析逻辑。</p>
+<p>Webhook 应独立定义事件 ID、Schema 版本、签名原文、时间窗口、密钥轮换、重试周期、去重期限和重放方式，并限制回调地址的访问范围。分页大规模导出宜使用异步导出或快照，不把普通游标列表承诺为数据库一致性快照。</p>
+<p>上述扩展属于设计入口，配套工程只实现契约工具与 Project 同步接口样例。团队新增这些能力时，应另行补全其契约、失败模式和验收用例。</p>
+<h2 id="section-12">12 安全与认证</h2>
+<p>浏览器使用 OAuth 2.0 Authorization Code + PKCE <code>S256</code>；禁止在前端放置 client secret。精确登记回调地址，将一次性 verifier/state 绑定登录事务并校验返回；使用 OIDC 时还需验证 ID Token 的 issuer、audience、签名、有效期及 nonce。ID Token 不作为 API access token。公共客户端使用 PKCE 是标准安全要求，BFF 是本方案的架构选择。<a href="https://www.rfc-editor.org/rfc/rfc9700.html">RFC 9700</a></p>
+<p>基线契约是资源 API 的 Bearer 认证，随附浏览器示例为 SPA 直连：access token 仅放内存，refresh token 按身份平台能力实施轮换或发送方约束；不得写入 URL、日志或持久化前端存储。可选生产架构是同源 BFF：浏览器访问 <code>https://app.example.com/api</code>，BFF 保存 access/refresh token 并转发资源 API，浏览器只持有随机会话标识。BFF 的浏览器 Cookie 端点、登录/退出及 CSRF 机制必须另写契约，不能把接收 <code>getAccessToken</code> 的资源 API 客户端直接当作 Cookie SDK。</p>
+<p>BFF Cookie 设置 <code>Secure; HttpOnly; SameSite=Lax; Path=/</code>，采用 <code>__Host-</code> 前缀且不设置 Domain。登录后轮换会话，退出时作废服务端会话。Cookie 时长、绝对/空闲超时、token 轮换和撤销策略由身份负责人登记；回调方式需验证与 SameSite 的兼容性。</p>
+<p>Cookie 认证的写请求同时校验精确 Origin 和绑定会话的 CSRF token，拒绝缺失/错误 token；SameSite 只是补充措施。OAuth 回调有独立的登录事务防护，不套用业务 CSRF header。CORS 只控制浏览器跨源读取，不能替代认证和对象授权。<a href="https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html">OWASP CSRF 防护</a></p>
+<p>同源 BFF 无需开放资源 API CORS。若浏览器直连 <code>https://api.example.com</code>，按白名单返回单一 Origin，动态选择时加 <code>Vary: Origin</code>；预检允许实际所需方法及 <code>Authorization, Content-Type, Idempotency-Key, If-Match, traceparent</code>，Cookie 模式还应允许实际使用的 CSRF header。向脚本暴露 <code>ETag, Location, Retry-After, X-Request-Id</code>。携带 Cookie 时还需 <code>Access-Control-Allow-Credentials: true</code>，Origin 不得为 <code>*</code>；允许合法预检通过不代表业务请求免鉴权。<a href="https://fetch.spec.whatwg.org/#http-cors-protocol">Fetch CORS 协议</a></p>
+<p>资源服务校验 access token 的 issuer、audience、时效和签名/内省结果；只信任配置的算法与密钥来源。每次读取、修改、删除 Project 都执行 <code>principal + tenant + action + resource</code> 授权，不能仅凭 <code>projects:write</code> scope 或 UUID 难猜而放行。租户来自已验证身份并核对租户成员关系；数据库查询显式包含 tenant 条件。更新按字段白名单映射 <code>displayName/description</code>，禁止请求覆写 owner、tenant、内部状态。<a href="https://api-security.owasp.org/editions/2023/en/0xa1-broken-object-level-authorization/">OWASP 对象级授权</a></p>
+<h2 id="section-13">13 幂等与并发与故障恢复</h2>
+<p>创建 Project 必须携带高熵 <code>Idempotency-Key</code>。同一次用户意图生成一次，网络重试复用；主动创建第二个 Project 才生成新 key。数据库唯一键采用 <code>(tenant_id, principal_id, operation_id, key)</code>；每次回放仍重新认证授权，不能向失去权限的主体泄露历史结果。</p>
+<p>持久化记录至少包含作用域、语义指纹及算法版本、状态、业务资源 ID、结果状态码/正文/必要响应头、开始/完成/过期时间、租约与 fencing token。指纹覆盖方法、规范化路由/业务参数和请求体语义；只做明确约定的规范化，保留数组顺序、缺失与 null 差异，拒绝重复 JSON 成员。不能未经约定就 trim 字符串、转换大小写或丢弃未知字段；包含行为相关头（如适用的 If-Match）。散列原始 JSON 文本会将对象成员排序、空白差异误判为不同请求。</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">当前记录</th><th scope="col">本次条件</th><th scope="col">团队约定的处理</th></tr></thead><tbody><tr><td>无记录</td><td>身份、格式及参数有效</td><td>原子占位为 <code>IN_PROGRESS</code>，仅占位成功者执行</td></tr><tr><td>任意有效记录</td><td>指纹不同</td><td><code>409</code>，问题码 <code>IDEMPOTENCY_KEY_REUSED</code></td></tr><tr><td><code>IN_PROGRESS</code></td><td>指纹相同</td><td><code>409</code>，问题码 <code>IDEMPOTENCY_IN_PROGRESS</code>，附 <code>Retry-After</code></td></tr><tr><td><code>SUCCEEDED</code> / <code>FAILED_FINAL</code></td><td>指纹相同且仍有权访问</td><td>回放已记录业务结果，不再次执行</td></tr><tr><td><code>UNKNOWN</code></td><td>提交结果无法确定</td><td>冻结执行，查询业务事实并对账后转终态</td></tr></tbody></table></div>
+<p><code>409 + Retry-After</code> 是本方案协议约定。结果回放保留原业务正文、状态码、Location/ETag，但重新生成当前请求追踪头，绝不回放 Set-Cookie 等会话头。终态错误的原正文 traceId 定位首次处理，新的 X-Request-Id 定位本次回放，日志保存二者关联。认证、格式校验或限流的前置拒绝不占位；已开始处理后的确定性业务失败记录为 <code>FAILED_FINAL</code>。确认事务完全回滚且没有外部副作用的瞬时故障才可安全释放或重新执行；超时、断连及不确定的 5xx 不能据此推断事务回滚。</p>
+<p>单数据库事务须原子提交业务写入、幂等终态和结果记录；“先写业务，再写 Redis 成功缓存”存在重复创建窗口。外部调用使用同事务 outbox 和稳定业务去重键，下游也需实现去重/对账，不宣称跨系统 exactly-once。租约到期只触发恢复检查；接管者使用 fencing token 阻止旧执行者继续写入。<code>IN_PROGRESS/UNKNOWN</code> 不得被普通 TTL 清理任务删除。</p>
+<p>终态保留期建议自完成起至少 24 小时，业务最长重试窗口、离线客户端及故障恢复需要更长时相应延长。到期可能被清理并作为新请求执行，因此客户端超过约定窗口不得盲目重发创建，应查询业务结果或进入人工恢复。金融、订单等不可重复业务还需独立业务唯一约束，不能依赖临时 key。为卡住记录设置年龄告警、资源关联查询、人工修复审计和定期恢复任务。</p>
+<h2 id="section-14">14 ETag 与局部更新</h2>
+<p>GET 返回强 ETag，示例 <code>ETag: &quot;7&quot;</code>；更新提交原样 <code>If-Match: &quot;7&quot;</code>。标准采用强比较；前提不成立返回 <code>412</code>，本方案缺少条件返回 <code>428</code> 并设置 <code>Cache-Control: no-store, no-transform</code>。本方案要求单一具体强标签，拒绝 <code>*</code>、弱标签或多值作为更新输入，错误按契约返回 <code>400</code>；这是对 HTTP 可用语法的应用级收窄。<a href="https://www.rfc-editor.org/rfc/rfc9110.html#section-13.1.1">RFC 9110 条件请求</a>、<a href="https://www.rfc-editor.org/rfc/rfc6585.html#section-3">RFC 6585 §3</a></p>
+<p>授权、读取当前版本和条件更新必须在事务中保持一致，例如 <code>UPDATE ... WHERE tenant_id=? AND id=? AND version=?</code>，成功后递增版本；受影响行数为零时在权限范围内区分不存在与冲突。ETag 必须随实际表示变化；本基线固定单项资源 JSON 的 UTF-8 序列化与 identity 内容编码，网关不得压缩或变换，响应使用 no-transform。任何影响表示字节的变化都须更新 version；更换序列化规则应迁移受影响版本或发布新 API 版本。扩展投影或压缩编码前，应重新设计能区分表示变体的 ETag 契约。客户端收到 <code>412</code> 后重新获取并让用户合并修改，禁止自动套用新标签覆盖别人提交。</p>
+<p>PATCH 使用 <code>application/merge-patch+json</code>：省略字段不改变；<code>displayName</code> 不可为 null；<code>description: null</code> 按 Merge Patch 删除表示成员，业务层清除存储值，再将响应规范化为必有的 <code>description: null</code>。先在副本上应用补丁，校验完整业务状态，再原子提交；数组整体替换，不能把 Merge Patch 当作数组元素更新语言。<a href="https://www.rfc-editor.org/rfc/rfc7396.html">RFC 7396</a></p>
+<h2 id="section-15">15 游标分页与一致性</h2>
+<p>Project 固定按不可变 <code>(createdAt, id)</code> 升序，后页查询使用 <code>createdAt &gt; lastCreatedAt OR (createdAt = lastCreatedAt AND id &gt; lastId)</code>；时间精度、ID 排序规则与数据库索引一致。Cursor 是不可解释的服务端令牌，签名并绑定租户、身份/权限上下文、过滤条件、排序、最后位置、协议版本和到期时间；包含敏感内容时加密，单纯 Base64 不提供保护。每页重新授权。篡改、跨租户、过滤条件改变或过期统一按契约返回 <code>400 INVALID_CURSOR</code>。</p>
+<p>默认列表是逐页当前视图，不承诺快照：并发删除、权限变化、筛选字段更新或晚提交记录都可能让集合与首页时不同；keyset 只能改善偏移分页位移问题。导出若要求首页时集合完整一致，另设异步导出任务并固定数据库快照/版本化结果集，不能把长事务挂在多个浏览器请求之间。本基线 Cursor 有效期为 15 分钟，limit 默认 20 且最大 100；准确约束写入契约，服务端限制扫描量，不接受无限 limit。</p>
+<h2 id="section-16">16 超时与重试与限流</h2>
+<p>每条调用链设总 deadline，并向下游传递剩余预算；连接、读响应、数据库锁等待和外部调用分别限时。取消客户端请求不能视为服务端业务取消。初始容量配置由接口负责人给出并经压测确定，例如交互总预算 10 秒、单次请求最多 5 秒；其含义是所有重试和等待合计受 10 秒限制，不是每层都可用满额预算。</p>
+<p>客户端仅对网络瞬时失败及明确可恢复的 <code>408/429/502/503/504</code> 考虑重试，前提仍是操作可安全重复。GET 可有限重试；POST 仅在该端点已实现上述幂等协议、同 key/同语义、处于有效窗口时重试。无 key 的 POST、未知业务结果、<code>412/422</code> 不自动重试；<code>401</code> 最多触发一次受控刷新，再按原操作的重试资格决定是否重发。<a href="https://www.rfc-editor.org/rfc/rfc9110.html#section-9.2.2">RFC 9110 幂等方法</a></p>
+<p>随附客户端每次调用只发送一次；业务层需要自动重试时，团队约定最多追加 1 次，采用 full jitter：<code>random(0, min(2s, 200ms * 2^attempt))</code>。解析 Retry-After 的秒数与 HTTP 日期，等待不早于该值；超过剩余 deadline 则结束并向调用者返回可再次尝试时间。只在一层拥有重试策略，避免浏览器/BFF/网关/服务多层放大；幂等处理中 409 仅按其问题码和约定延后。<a href="https://www.rfc-editor.org/rfc/rfc9110.html#section-10.2.3">RFC 9110 Retry-After</a></p>
+<p>网关按 tenant/principal/operation 实施速率与突发限流，服务端另设并发、请求体字节、分页量、执行时间和日配额；IP 只能作为附加信号。限流返回 <code>429</code> 与恢复提示，容量故障返回 <code>503</code>，不得把二者混同。<a href="https://www.rfc-editor.org/rfc/rfc6585.html#section-4">RFC 6585 §4</a> 初始阈值记录为配置版本并附压测证据；限制器故障时读请求可限额降级，写入和付费资源按业务风险选择拒绝，必须预先登记，不能默认无限放行。幂等回放也计入请求速率，但不再次扣业务用量。</p>
+<h2 id="section-17">17 可观测性与敏感数据</h2>
+<p>入口生成受控 <code>X-Request-Id</code>，分布式追踪使用 <code>traceparent</code>；校验外部值格式与长度，跨信任边界按策略重新建 trace，不能把追踪 ID 作为授权依据。<a href="https://www.w3.org/TR/trace-context/">W3C Trace Context</a> 结构化日志记录时间、operationId、路由模板、状态、耗时、服务版本、脱敏主体/租户标识、幂等命中和冲突类别。禁止日志记录 Authorization、Cookie、token、完整请求体和用户 description；key 只记录受控摘要。过滤换行，限制长度，配置访问权限、保留期及删除策略。<a href="https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html">OWASP 日志规范</a></p>
+<p>按 operationId 统计请求量、成功率、p50/p95/p99、429、5xx、412、幂等未知状态年龄及依赖超时；指标标签不放用户 ID、key 或原始路径，避免基数失控。权限变更及人工恢复写入独立审计。Problem Details 只返回可处理的错误描述与追踪标识，不暴露 SQL、堆栈或 token；<code>status</code> 与实际 HTTP 状态一致。<a href="https://www.rfc-editor.org/rfc/rfc9457.html">RFC 9457</a></p>
+<h2 id="section-18">18 兼容性与发布回滚</h2>
+<p>以下按“已发布旧客户端调用新服务端”判断；新客户端先于服务端上线是另一方向，必须另外验证。<code>default</code> 不会自动补齐请求，也不能抵消新增必填字段造成的破坏。</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">契约变化</th><th scope="col">对旧客户端</th><th scope="col">发布要求</th></tr></thead><tbody><tr><td>请求字段变必填、缩短 maxLength、收紧 pattern、删除可接受枚举/null</td><td>破坏</td><td>新主版本或保留旧行为</td></tr><tr><td>新增可选请求字段、扩大请求枚举</td><td>通常兼容</td><td>先服务端后客户端；旧服务端可能拒绝新字段/值</td></tr><tr><td>删除/重命名响应字段，必填改可选，允许原本不允许的 null</td><td>破坏</td><td>新主版本；保留过渡表示</td></tr><tr><td>增加响应字段</td><td>有条件兼容</td><td>旧客户端必须忽略未知字段；严格闭合响应 schema 会破坏</td></tr><tr><td>增加响应枚举值/union 分支</td><td>破坏</td><td>预先定义开放值和未知分支处理，不能事后假定兼容</td></tr><tr><td>可选响应字段变必填、缩小响应枚举</td><td>通常兼容</td><td>检查客户端生成代码、业务语义与回滚旧实例</td></tr><tr><td>修改排序、分页一致性、错误含义、权限或副作用</td><td>可能破坏</td><td>人工语义评审，diff 工具不能证明兼容</td></tr></tbody></table></div>
+<p>以已发布生产契约为基线运行 <code>oasdiff breaking</code>，同时审查 changelog；固定工具版本，忽略项必须附原因、接口 owner、迁移期限。工具报告与真实 SDK/服务端验证结合使用。<a href="https://github.com/oasdiff/oasdiff/blob/main/docs/BREAKING-CHANGES.md">oasdiff 官方变更检测</a></p>
+<p>采用先扩展后收缩：增加兼容数据库结构 → 发布兼容新旧契约的服务端 → 小流量灰度 → 发布客户端 → 迁移存量 → 达到弃用条件后删除旧行为。灰度比例、观察窗口和自动停止阈值由 SRE 在发布单填写；例如按租户稳定分组从 1% 到 10% 再扩大，观察错误率、延迟及未知幂等记录。新旧实例必须共享兼容的幂等存储、cursor/ETag 版本处理和签名密钥轮换窗口。</p>
+<p>回滚包括应用、配置与数据兼容方案：保留上个可用制品和客户端功能开关；旧服务能读取新数据前才可切回。禁止把“回滚代码”当作自动撤销业务写入。不可逆迁移先备份并验证恢复流程，必要时停止写流量、前向修复。契约、SDK、镜像摘要、数据库迁移版本和发布记录必须关联同一发布 ID。</p>
+<h2 id="section-19">19 测试门禁与责任清单</h2>
+<p>每次契约变更依次执行：语法/ref 解析与 lint → 正反例 schema 验证 → 与生产基线兼容性比较 → SDK 确定性生成和编译 → 提供方集成验证 → 发布前验收。线上默认校验全部请求；响应校验至少在测试环境全量启用，生产采样时需脱敏。仅生成 TypeScript 类型或 Mock 不构成运行时验证。</p>
+<p>必须覆盖：跨租户和越权字段、过期 token、CORS/CSRF；description 缺失/null；同 key 并发只产生一个资源、异体冲突、提交后断连、租约接管、终态过期；旧 ETag 冲突和并发更新；游标篡改及并发增删；429/Retry-After、deadline、代理返回 HTML/空正文；新旧客户端/服务端交叉组合。外部副作用场景增加 outbox 重投和下游去重恢复测试。CI 凭据最小授权，依赖固定版本/锁文件，禁止 PR 不可信代码获取生产密钥。</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">责任角色</th><th scope="col">上线前必须交付的证据</th></tr></thead><tbody><tr><td>API owner / 前后端负责人</td><td>已评审契约、兼容报告、生成 SDK、错误与迁移说明</td></tr><tr><td>后端 / 数据负责人</td><td>原子性与并发测试、幂等恢复演练、索引计划、迁移/恢复步骤</td></tr><tr><td>安全 / 身份负责人</td><td>OAuth 配置、对象授权测试、Cookie/CORS/CSRF、密钥轮换与审计策略</td></tr><tr><td>QA</td><td>正反例、真实提供方合同测试、新旧版本交叉验收记录</td></tr><tr><td>SRE / 发布负责人</td><td>容量阈值、SLO/告警、灰度条件、回滚制品与值班联系人</td></tr></tbody></table></div>
+<p>任一证据缺失时保持“待验收”状态；文档完整和静态检查通过不等于业务服务已经可直接上线。</p>
+<h2 id="section-20">20 工程执行与示例调用</h2>
+<p>在仓库根目录执行以下命令。Python 3.12 及 Node.js 24.19.0 是 CI 基线，Node.js 包管理器固定为 pnpm 11.19.0。更换版本须重新跑完整检查。<code>requirements-contract.lock</code> 和 <code>pnpm-lock.yaml</code> 固定实际依赖解析，安装时不得忽略锁文件。</p>
+<p>Windows PowerShell：</p>
+<pre aria-label="powershell"><code>py -3.12 -m venv .venv
+.venv/Scripts/python.exe -m pip install -r requirements-contract.lock
+.venv/Scripts/python.exe scripts/verify_contract.py
+.venv/Scripts/python.exe -m unittest discover -s tests -v
+pnpm install --frozen-lockfile
+pnpm validate
+.venv/Scripts/python.exe scripts/build_docs.py</code></pre>
+<p>Linux 或 macOS：</p>
+<pre aria-label="bash"><code>python3.12 -m venv .venv
+.venv/bin/python -m pip install -r requirements-contract.lock
+.venv/bin/python scripts/verify_contract.py
+.venv/bin/python -m unittest discover -s tests -v
+pnpm install --frozen-lockfile
+pnpm validate
+.venv/bin/python scripts/build_docs.py</code></pre>
+<p>修改 YAML 后先执行 <code>pnpm generate</code>，评审生成差异，再执行 <code>pnpm validate</code>。生成检查失败不能靠手工编辑 schema.d.ts 修复。浏览器阅读版由标准库脚本生成，不依赖网络资源；阅读版末尾含可展开的完整 YAML 快照，维护时以 YAML 源文件为准。</p>
+<p>以下 bash 示例要求先在本地安全配置 <code>API_BASE_URL</code> 与 <code>ACCESS_TOKEN</code>；地址指向团队已部署的服务。示例 UUID 用来表示一次逻辑提交的幂等键，实际应用需生成新的高熵值并在该提交重试中保持不变。</p>
+<pre aria-label="bash"><code>curl --fail-with-body -i \
+  -X POST &quot;${API_BASE_URL:?}/v1/projects&quot; \
+  -H &quot;Authorization: Bearer ${ACCESS_TOKEN:?}&quot; \
+  -H &#x27;Content-Type: application/json&#x27; \
+  -H &#x27;Idempotency-Key: 9c4de9a9-c624-4510-8704-76cd3cfa6610&#x27; \
+  --data &#x27;{&quot;displayName&quot;:&quot;生产接入示例&quot;,&quot;description&quot;:null}&#x27;</code></pre>
+<p>成功时应收到 201、Location、ETag 和完整 Project。以服务端实际返回的 ID 与 ETag 更新：</p>
+<pre aria-label="bash"><code>curl --fail-with-body -i \
+  -X PATCH &quot;${API_BASE_URL:?}/v1/projects/${PROJECT_ID:?}&quot; \
+  -H &quot;Authorization: Bearer ${ACCESS_TOKEN:?}&quot; \
+  -H &#x27;Content-Type: application/merge-patch+json&#x27; \
+  -H &quot;If-Match: ${PROJECT_ETAG:?}&quot; \
+  --data &#x27;{&quot;description&quot;:&quot;已完成首次接入&quot;}&#x27;</code></pre>
+<p><code>PROJECT_ETAG</code> 包含服务端返回的双引号，例如字符串值 <code>&quot;1&quot;</code>。不要只传整数 1。对同一个已变化资源重用旧标签，应得到 412。命令可能显示业务数据与响应头，执行时遵循终端记录与凭据使用规则。</p>
+<h2 id="section-21">21 生产验收用例矩阵</h2>
+<p>下表用于目标环境的提供方验收，配套静态工具与 Mock Fetch 测试只覆盖其中一部分。测试记录必须标明服务地址所属环境、镜像摘要、契约版本、执行时间和结果，不以本手册替代真实服务测试。</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">编号</th><th scope="col">输入或故障</th><th scope="col">必须验证的结果</th></tr></thead><tbody><tr><td>P01</td><td>合法创建后读取</td><td>201 与 200 一致，Location 正确，ETag 可用于更新</td></tr><tr><td>P02</td><td>缺少 displayName 或仅空白</td><td>422，errors 指向对应字段</td></tr><tr><td>P03</td><td>提交未知字段 tenantId 或 version</td><td>请求被拒绝，不改变归属或版本</td></tr><tr><td>P04</td><td>description 缺省与 null</td><td>创建缺省规范化，PATCH 缺省不变，null 清除</td></tr><tr><td>P05</td><td>非法 UUID 或重复查询参数</td><td>400，不触发业务写入</td></tr><tr><td>P06</td><td>损坏 JSON 或错误媒体类型</td><td>分别返回 400 或 415</td></tr><tr><td>P07</td><td>缺少或过期令牌</td><td>401，返回正确的认证挑战</td></tr><tr><td>P08</td><td>跨租户访问已知资源 ID</td><td>被拒绝，不泄露对象或历史幂等结果</td></tr><tr><td>P09</td><td>同 key 同请求并发提交</td><td>业务资源仅创建一次，终态可回放</td></tr><tr><td>P10</td><td>同 key 换请求体</td><td>409 幂等键复用冲突</td></tr><tr><td>P11</td><td>提交事务后丢失响应</td><td>同 key 可取回结果，不重复执行</td></tr><tr><td>P12</td><td>处理中节点崩溃或租约到期</td><td>先查询事实和对账，旧执行者不能继续写入</td></tr><tr><td>P13</td><td>两个客户端使用同一 ETag 更新</td><td>最多一个条件写入成功，其余 412</td></tr><tr><td>P14</td><td>缺少条件头或使用弱标签</td><td>分别返回 428 或 400</td></tr><tr><td>P15</td><td>删除成功</td><td>204 且无响应体，后续读取按策略返回 404</td></tr><tr><td>P16</td><td>游标篡改或跨上下文使用</td><td>400 INVALID_CURSOR，不扩大数据范围</td></tr><tr><td>P17</td><td>达到限流与依赖不可用</td><td>429 或 503，Retry-After 与实际恢复策略一致</td></tr><tr><td>P18</td><td>代理返回 HTML 或连接取消</td><td>客户端保留错误状态，界面无 JSON 解析崩溃</td></tr><tr><td>P19</td><td>内容编码及网关变换</td><td>强 ETag 与实际表示一致，禁止错误共用标签</td></tr><tr><td>P20</td><td>新旧客户端与服务端组合</td><td>滚动升级与回滚均符合已声明兼容范围</td></tr></tbody></table></div>
+<p>响应验收同时检查状态码、Content-Type、必要响应头、Schema 和业务结果。接口支持超大整数、emoji 或组合字符时增加相应跨语言测试。并发测试需实际触发竞争与故障窗口，仅循环顺序调用不足以验证原子性。</p>
+<h2 id="section-22">22 版本治理与变更记录</h2>
+<p>本方案将 <code>/v1</code> 作为不兼容接口的主版本边界。<code>info.version</code> 使用语义版本：兼容的新能力递增次版本，文档修正或不改变契约接受集合的修复递增修订版本。发现线上实现与契约不符时，先评估消费者依赖，再决定修复行为或发布迁移方案，不能简单以“修 bug”为由忽略兼容性。</p>
+<p>生产契约基线取自最近成功发布的不可变制品，保存提交号和 SHA256。比较基线不得使用待评审分支中的同名文件，否则开发者可以同时修改基线使检查失效。首次发布没有历史生产基线，应明确登记首次验收，并在发布成功后建立基线。</p>
+<p>可采用固定版本的 oasdiff 执行以下检查。<code>--fail-on WARN</code> 使警告和错误都会阻止流水线；仅执行打印差异的命令不能自动构成门禁。工具安装与摘要校验由 CI 的受控工具镜像负责，禁止在每次运行时获取未固定的 latest。<a href="https://github.com/oasdiff/oasdiff/blob/main/docs/BREAKING-CHANGES.md">oasdiff 变更检测</a></p>
+<pre aria-label="bash"><code>oasdiff breaking --fail-on WARN \
+  artifacts/production-openapi.yaml contracts/openapi.yaml
+oasdiff changelog \
+  artifacts/production-openapi.yaml contracts/openapi.yaml</code></pre>
+<p>本仓库提供静态与客户端 CI；生产基线获取、提供方集成测试、压测及发布流程需要连接团队实际系统。兼容性门禁无法仅从当前仓库推导历史生产状态，配置时应要求缺失基线失败，并仅允许经过登记的首次发布流程建立初始基线。</p>
+<p>一次变更的发布记录至少填写以下项目：</p>
+<pre aria-label="text"><code>变更标题
+业务触发场景与预期结果
+契约版本与提交号
+受影响的 operationId 和字段
+旧客户端访问新服务端的兼容结论
+新客户端访问旧服务端的兼容结论
+数据库及配置变更
+幂等 ETag Cursor 的迁移影响
+自动检查结果与目标环境验收记录
+灰度比例 观察窗口 停止条件
+回滚制品 数据处理步骤及负责人
+弃用起始日期 迁移目标和停止服务条件</code></pre>
+<p>弃用应有可发现的说明、迁移指引和调用量证据。团队应先设定支持周期，再与消费方确认实际迁移窗口；删除旧版本前确认剩余调用来源与处理方案。规范中的 <code>deprecated: true</code> 是描述信息，需要配合监控和发布治理才会产生实际效果。</p>
+<h2 id="section-23">23 常见故障处理手册</h2>
+<div class="table-wrap"><table><thead><tr><th scope="col">现象</th><th scope="col">首先检查</th><th scope="col">处理方式</th></tr></thead><tbody><tr><td>生成类型与后端不一致</td><td>契约版本和生成差异</td><td>修正契约或实现，重新生成和验证</td></tr><tr><td>文档能调用但浏览器失败</td><td>Origin、预检与响应头暴露</td><td>对照 CORS 来源名单和实际方法检查</td></tr><tr><td>浏览器读不到 ETag</td><td>Access-Control-Expose-Headers</td><td>明确暴露 ETag，避免 UI 保存空标签</td></tr><tr><td>POST 超时后重复资源</td><td>key 是否复用和幂等事务边界</td><td>关联日志与业务记录，修复原子性及恢复流程</td></tr><tr><td>并发更新覆盖他人修改</td><td>If-Match 和数据库条件写</td><td>使用原子条件更新，412 不自动覆盖</td></tr><tr><td>分页出现变动</td><td>是否误认为快照与排序键是否稳定</td><td>核查 keyset 条件，导出改用快照任务</td></tr><tr><td>客户端遇到新错误码崩溃</td><td>是否穷尽匹配而无兜底</td><td>未知 code 回退通用错误并保存 traceId</td></tr><tr><td>发布后旧客户端报错</td><td>请求收紧、响应空值或枚举变化</td><td>停止灰度，恢复兼容行为或执行迁移</td></tr></tbody></table></div>
+<p>排障时首先保留 operationId、traceId、契约版本、HTTP 状态和发生时间，再按授权范围读取服务端日志。幂等结果未知、数据库迁移异常或跨租户风险应由对应负责人接手。任何手工数据修复必须保留修改原因、前后状态摘要和执行记录。</p>
+<h2 id="section-24">24 参考资料</h2>
+<p>本规范的阈值、命名、分页协议、幂等状态机和发布流程属于团队设计。以下资料用于核对相关技术标准和工具行为，查阅日期为2026年9月14日。</p>
+<ul><li><a href="https://spec.openapis.org/oas/v3.1.0.html">OpenAPI 3.1.0 规范</a></li><li><a href="https://json-schema.org/understanding-json-schema/reference/object">JSON Schema 对象约束</a></li><li><a href="https://json-schema.org/understanding-json-schema/reference/type">JSON Schema 类型</a></li><li><a href="https://www.rfc-editor.org/rfc/rfc8259.html">RFC 8259 JSON</a></li><li><a href="https://www.rfc-editor.org/rfc/rfc3339.html">RFC 3339 时间戳</a></li><li><a href="https://www.rfc-editor.org/rfc/rfc9110.html">RFC 9110 HTTP 语义</a></li><li><a href="https://www.rfc-editor.org/rfc/rfc6585.html">RFC 6585 条件请求与限流状态</a></li><li><a href="https://www.rfc-editor.org/rfc/rfc7396.html">RFC 7396 JSON Merge Patch</a></li><li><a href="https://www.rfc-editor.org/rfc/rfc9457.html">RFC 9457 Problem Details</a></li><li><a href="https://www.rfc-editor.org/rfc/rfc9700.html">RFC 9700 OAuth 安全实践</a></li><li><a href="https://fetch.spec.whatwg.org/">WHATWG Fetch 与 CORS</a></li><li><a href="https://api-security.owasp.org/editions/2023/en/0xa1-broken-object-level-authorization/">OWASP 对象级授权</a></li><li><a href="https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html">OWASP CSRF 防护</a></li><li><a href="https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html">OWASP 日志规范</a></li><li><a href="https://www.w3.org/TR/trace-context/">W3C Trace Context</a></li><li><a href="https://openapi-ts.dev/introduction">openapi-typescript</a></li><li><a href="https://openapi-ts.dev/openapi-fetch/">openapi-fetch</a></li><li><a href="https://github.com/oasdiff/oasdiff/blob/main/docs/BREAKING-CHANGES.md">oasdiff</a></li></ul><h2 id="contract-source">完整契约源文件</h2><p>以下为本阅读版生成时的完整契约快照。维护时修改仓库中的 contracts/openapi.yaml 后重新构建阅读版。</p><p class="meta">契约 SHA256 <code>5715648e95cdefaa5046c64346bade1088e7626589ba2cdea36b1efc1a2a9406</code></p><details><summary>展开 OpenAPI YAML</summary><pre><code>openapi: 3.1.0
+jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
+info:
+  title: Project API
+  version: 1.0.0
+  description: |
+    本项目 HTTP+JSON 契约。所有地址均为待替换的 example.com 示例。
+    服务端从已验证访问令牌的授权上下文确定租户，并逐资源校验权限。
+    浏览器使用 Authorization Code + PKCE S256，禁止在浏览器存储客户端密钥。
+    所有响应（包括错误）发送 Cache-Control: no-store, no-transform。
+    单项 JSON 使用稳定的 UTF-8 序列化和 identity 内容编码，网关不得压缩或转换。
+    相同资源相同 version 的表示字节必须稳定；任何表示变化须递增 version。
+    更换序列化规则须迁移所有受影响资源版本或发布新的 API 主版本。
+    未声明查询参数与重复的单值参数返回 400；请求 JSON 重复键在解析层拒绝。
+    本契约支持单个强 If-Match ETag，不接受弱 ETag、列表或 *。
+servers:
+  - url: https://api.example.com
+    description: 示例；部署前替换
+tags:
+  - name: Projects
+    description: 当前授权租户内的项目
+paths:
+  /v1/projects:
+    get:
+      tags: [Projects]
+      operationId: listProjects
+      summary: 分页列出项目
+      description: |
+        按 createdAt ASC、id ASC 稳定排序。游标绑定租户、过滤条件和排序，
+        服务端校验完整性；不得包含明文敏感数据。游标有效期 15 分钟。
+        过期/无效游标返回 400，code=INVALID_CURSOR。
+        这是实时 keyset 分页，不提供跨页快照保证。nextCursor=null 表示结束。
+      security:
+        - oauth2: [projects:read]
+      parameters:
+        - $ref: &#x27;#/components/parameters/Limit&#x27;
+        - $ref: &#x27;#/components/parameters/Cursor&#x27;
+      responses:
+        &#x27;200&#x27;:
+          description: 项目列表；无数据时 items=[] 且 nextCursor=null
+          headers:
+            X-Request-Id:
+              $ref: &#x27;#/components/headers/RequestId&#x27;
+            Cache-Control:
+              $ref: &#x27;#/components/headers/NoStore&#x27;
+          content:
+            application/json:
+              schema:
+                $ref: &#x27;#/components/schemas/ProjectPage&#x27;
+              example:
+                items:
+                  - id: 6c1d9950-8fa5-4c0e-bb8f-d875fe4c4e7c
+                    displayName: 示例项目
+                    description: null
+                    createdAt: &#x27;2026-09-14T08:00:00Z&#x27;
+                    updatedAt: &#x27;2026-09-14T08:00:00Z&#x27;
+                    version: 1
+                nextCursor: null
+        &#x27;400&#x27;:
+          $ref: &#x27;#/components/responses/BadRequest&#x27;
+        &#x27;401&#x27;:
+          $ref: &#x27;#/components/responses/Unauthorized&#x27;
+        &#x27;403&#x27;:
+          $ref: &#x27;#/components/responses/Forbidden&#x27;
+        &#x27;429&#x27;:
+          $ref: &#x27;#/components/responses/TooManyRequests&#x27;
+        &#x27;500&#x27;:
+          $ref: &#x27;#/components/responses/InternalError&#x27;
+        &#x27;503&#x27;:
+          $ref: &#x27;#/components/responses/Unavailable&#x27;
+    post:
+      tags: [Projects]
+      operationId: createProject
+      summary: 创建项目
+      description: |
+        Idempotency-Key 必填，作用域为租户+主体+operationId。
+        从终态完成时起保留至少 24 小时；不得按 TTL 清理 IN_PROGRESS/UNKNOWN 状态。
+        同键同指纹重放原状态、响应体和 Location/ETag；不重做业务写入。
+        同键不同指纹或原请求仍在执行返回 409，以 code 区分。
+        创建 displayName 无唯一性要求。description 未提供时存储为空。
+      security:
+        - oauth2: [projects:write]
+      parameters:
+        - $ref: &#x27;#/components/parameters/IdempotencyKey&#x27;
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: &#x27;#/components/schemas/CreateProject&#x27;
+            example:
+              displayName: 示例项目
+              description: null
+      responses:
+        &#x27;201&#x27;:
+          description: 创建成功；重复提交可重放最初的 201
+          headers:
+            X-Request-Id:
+              $ref: &#x27;#/components/headers/RequestId&#x27;
+            Location:
+              description: 新资源的相对路径
+              required: true
+              schema:
+                type: string
+                pattern: &#x27;^/v1/projects/[0-9a-f-]{36}$&#x27;
+              example: /v1/projects/6c1d9950-8fa5-4c0e-bb8f-d875fe4c4e7c
+            ETag:
+              $ref: &#x27;#/components/headers/ETag&#x27;
+            Cache-Control:
+              $ref: &#x27;#/components/headers/NoStore&#x27;
+          content:
+            application/json:
+              schema:
+                $ref: &#x27;#/components/schemas/Project&#x27;
+              example:
+                id: 6c1d9950-8fa5-4c0e-bb8f-d875fe4c4e7c
+                displayName: 示例项目
+                description: null
+                createdAt: &#x27;2026-09-14T08:00:00Z&#x27;
+                updatedAt: &#x27;2026-09-14T08:00:00Z&#x27;
+                version: 1
+        &#x27;400&#x27;:
+          $ref: &#x27;#/components/responses/BadRequest&#x27;
+        &#x27;401&#x27;:
+          $ref: &#x27;#/components/responses/Unauthorized&#x27;
+        &#x27;403&#x27;:
+          $ref: &#x27;#/components/responses/Forbidden&#x27;
+        &#x27;409&#x27;:
+          $ref: &#x27;#/components/responses/Conflict&#x27;
+        &#x27;415&#x27;:
+          $ref: &#x27;#/components/responses/UnsupportedMediaType&#x27;
+        &#x27;422&#x27;:
+          $ref: &#x27;#/components/responses/ValidationFailed&#x27;
+        &#x27;429&#x27;:
+          $ref: &#x27;#/components/responses/TooManyRequests&#x27;
+        &#x27;500&#x27;:
+          $ref: &#x27;#/components/responses/InternalError&#x27;
+        &#x27;503&#x27;:
+          $ref: &#x27;#/components/responses/Unavailable&#x27;
+  /v1/projects/{projectId}:
+    parameters:
+      - $ref: &#x27;#/components/parameters/ProjectId&#x27;
+    get:
+      tags: [Projects]
+      operationId: getProject
+      summary: 查询项目
+      description: 不存在、其他租户或对当前主体不可见的项目均返回 404。
+      security:
+        - oauth2: [projects:read]
+      responses:
+        &#x27;200&#x27;:
+          description: 项目详情
+          headers:
+            X-Request-Id:
+              $ref: &#x27;#/components/headers/RequestId&#x27;
+            ETag:
+              $ref: &#x27;#/components/headers/ETag&#x27;
+            Cache-Control:
+              $ref: &#x27;#/components/headers/NoStore&#x27;
+          content:
+            application/json:
+              schema:
+                $ref: &#x27;#/components/schemas/Project&#x27;
+              example:
+                id: 6c1d9950-8fa5-4c0e-bb8f-d875fe4c4e7c
+                displayName: 示例项目
+                description: null
+                createdAt: &#x27;2026-09-14T08:00:00Z&#x27;
+                updatedAt: &#x27;2026-09-14T08:00:00Z&#x27;
+                version: 1
+        &#x27;400&#x27;:
+          $ref: &#x27;#/components/responses/BadRequest&#x27;
+        &#x27;401&#x27;:
+          $ref: &#x27;#/components/responses/Unauthorized&#x27;
+        &#x27;403&#x27;:
+          $ref: &#x27;#/components/responses/Forbidden&#x27;
+        &#x27;404&#x27;:
+          $ref: &#x27;#/components/responses/NotFound&#x27;
+        &#x27;429&#x27;:
+          $ref: &#x27;#/components/responses/TooManyRequests&#x27;
+        &#x27;500&#x27;:
+          $ref: &#x27;#/components/responses/InternalError&#x27;
+        &#x27;503&#x27;:
+          $ref: &#x27;#/components/responses/Unavailable&#x27;
+    patch:
+      tags: [Projects]
+      operationId: updateProject
+      summary: 部分更新项目
+      description: |
+        Merge Patch：字段缺省表示不修改，description:null 移除成员，
+        业务层将清除后的 description 在完整响应中规范化为 null。
+        displayName:null、空对象和未知字段均返回 422。不接受整个文档 null。
+        If-Match 必须等于当前强 ETag，否则返回 412。校验与写入必须原子化。
+        每次成功接受的 PATCH（包括同值赋值）递增 version，并更新 updatedAt。
+      security:
+        - oauth2: [projects:write]
+      parameters:
+        - $ref: &#x27;#/components/parameters/IfMatch&#x27;
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: &#x27;#/components/schemas/UpdateProject&#x27;
+            example:
+              description: null
+      responses:
+        &#x27;200&#x27;:
+          description: 更新后的完整项目
+          headers:
+            X-Request-Id:
+              $ref: &#x27;#/components/headers/RequestId&#x27;
+            ETag:
+              description: 对应更新后 version 的强 ETag
+              required: true
+              schema:
+                $ref: &#x27;#/components/schemas/VersionETag&#x27;
+              example: &#x27;&quot;2&quot;&#x27;
+            Cache-Control:
+              $ref: &#x27;#/components/headers/NoStore&#x27;
+          content:
+            application/json:
+              schema:
+                $ref: &#x27;#/components/schemas/Project&#x27;
+              example:
+                id: 6c1d9950-8fa5-4c0e-bb8f-d875fe4c4e7c
+                displayName: 示例项目
+                description: null
+                createdAt: &#x27;2026-09-14T08:00:00Z&#x27;
+                updatedAt: &#x27;2026-09-14T08:10:00Z&#x27;
+                version: 2
+        &#x27;400&#x27;:
+          $ref: &#x27;#/components/responses/BadRequest&#x27;
+        &#x27;401&#x27;:
+          $ref: &#x27;#/components/responses/Unauthorized&#x27;
+        &#x27;403&#x27;:
+          $ref: &#x27;#/components/responses/Forbidden&#x27;
+        &#x27;404&#x27;:
+          $ref: &#x27;#/components/responses/NotFound&#x27;
+        &#x27;412&#x27;:
+          $ref: &#x27;#/components/responses/PreconditionFailed&#x27;
+        &#x27;415&#x27;:
+          $ref: &#x27;#/components/responses/UnsupportedMediaType&#x27;
+        &#x27;422&#x27;:
+          $ref: &#x27;#/components/responses/ValidationFailed&#x27;
+        &#x27;428&#x27;:
+          $ref: &#x27;#/components/responses/PreconditionRequired&#x27;
+        &#x27;429&#x27;:
+          $ref: &#x27;#/components/responses/TooManyRequests&#x27;
+        &#x27;500&#x27;:
+          $ref: &#x27;#/components/responses/InternalError&#x27;
+        &#x27;503&#x27;:
+          $ref: &#x27;#/components/responses/Unavailable&#x27;
+    delete:
+      tags: [Projects]
+      operationId: deleteProject
+      summary: 删除项目
+      description: |
+        If-Match 校验与删除原子执行。成功返回 204，无响应体、无 Content-Type。
+        资源已删除时返回 404；HTTP 幂等性不要求重复请求状态码相同。
+      security:
+        - oauth2: [projects:write]
+      parameters:
+        - $ref: &#x27;#/components/parameters/IfMatch&#x27;
+      responses:
+        &#x27;204&#x27;:
+          description: 删除成功，无响应体
+          headers:
+            X-Request-Id:
+              $ref: &#x27;#/components/headers/RequestId&#x27;
+            Cache-Control:
+              $ref: &#x27;#/components/headers/NoStore&#x27;
+        &#x27;400&#x27;:
+          $ref: &#x27;#/components/responses/BadRequest&#x27;
+        &#x27;401&#x27;:
+          $ref: &#x27;#/components/responses/Unauthorized&#x27;
+        &#x27;403&#x27;:
+          $ref: &#x27;#/components/responses/Forbidden&#x27;
+        &#x27;404&#x27;:
+          $ref: &#x27;#/components/responses/NotFound&#x27;
+        &#x27;412&#x27;:
+          $ref: &#x27;#/components/responses/PreconditionFailed&#x27;
+        &#x27;428&#x27;:
+          $ref: &#x27;#/components/responses/PreconditionRequired&#x27;
+        &#x27;429&#x27;:
+          $ref: &#x27;#/components/responses/TooManyRequests&#x27;
+        &#x27;500&#x27;:
+          $ref: &#x27;#/components/responses/InternalError&#x27;
+        &#x27;503&#x27;:
+          $ref: &#x27;#/components/responses/Unavailable&#x27;
+components:
+  securitySchemes:
+    oauth2:
+      type: oauth2
+      description: |
+        Authorization Code + PKCE S256 为本平台强制策略；OAuth2 流定义本身不能强制 PKCE。
+        访问令牌通过 Authorization: Bearer 发送；认证服务与资源服务落实 PKCE、issuer、
+        audience、有效期、scope 及租户/对象级权限校验。
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.example.com/oauth2/authorize
+          tokenUrl: https://auth.example.com/oauth2/token
+          scopes:
+            projects:read: 查询当前授权租户内项目
+            projects:write: 创建、修改和删除当前授权租户内项目
+  parameters:
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      description: 项目 UUID，按规范小写字符串传输
+      schema:
+        $ref: &#x27;#/components/schemas/ProjectId&#x27;
+      example: 6c1d9950-8fa5-4c0e-bb8f-d875fe4c4e7c
+    Limit:
+      name: limit
+      in: query
+      description: 单页上限，服务端必须显式实现缺省值 20
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+      example: 20
+    Cursor:
+      name: cursor
+      in: query
+      description: 不透明游标；首次请求省略，客户端不得解析或构造
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 2048
+      example: eyJwb3MiOiJleGFtcGxlIn0.signature
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        每个逻辑创建操作生成一个高熵随机标识，例如 UUIDv4；网络重试复用同一值。
+        自定义随机值建议至少 128 位熵；UUIDv4 包含 122 个随机位。
+        缺失或格式不合法返回 400。本项目采用不加引号的 ASCII header 值协议。
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 128
+        pattern: &#x27;^[A-Za-z0-9_-]+$&#x27;
+      example: 7ce2f671-36d4-4756-863b-4e7c225d4a31
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: |
+        单个强 ETag，例如双引号包裹的版本号 &quot;1&quot;。缺失返回 428，
+        格式无效、弱 ETag、列表或 * 返回 400，合法但不匹配返回 412。
+      schema:
+        $ref: &#x27;#/components/schemas/VersionETag&#x27;
+      example: &#x27;&quot;1&quot;&#x27;
+  headers:
+    RequestId:
+      description: |
+        服务端为本次请求分配的 32 位小写十六进制非全零标识，浏览器可用于反馈故障。
+        新生成错误与正文 traceId 相同；终态错误回放保留原正文 traceId，
+        本头仍标识当前请求，服务端日志记录本次与历史请求的关联。
+      required: true
+      schema:
+        $ref: &#x27;#/components/schemas/TraceId&#x27;
+      example: 4bf92f3577b34da6a3ce929d0e0e4736
+    ETag:
+      description: |
+        必须是对应响应体 version 的强验证器，例如 version=1 对应 &quot;1&quot;。
+        同一资源相同 version 的表示字节必须稳定；更改表示或编码策略应更换验证器。
+      required: true
+      schema:
+        $ref: &#x27;#/components/schemas/VersionETag&#x27;
+      example: &#x27;&quot;1&quot;&#x27;
+    NoStore:
+      description: 本项目默认禁用浏览器及共享缓存保存响应
+      required: true
+      schema:
+        type: string
+        const: no-store, no-transform
+      example: no-store, no-transform
+    RetryAfter:
+      description: 本项目固定使用整数秒；客户端加入抖动并受总超时和重试上限约束
+      required: true
+      schema:
+        type: string
+        pattern: &#x27;^[0-9]+$&#x27;
+      example: &#x27;3&#x27;
+  schemas:
+    TraceId:
+      type: string
+      pattern: &#x27;^[0-9a-f]{32}$&#x27;
+      not:
+        const: &#x27;00000000000000000000000000000000&#x27;
+    ProjectId:
+      type: string
+      format: uuid
+      pattern: &#x27;^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$&#x27;
+    VersionETag:
+      type: string
+      pattern: &#x27;^&quot;[1-9][0-9]*&quot;$&#x27;
+    DisplayName:
+      type: string
+      minLength: 1
+      maxLength: 100
+      pattern: &#x27;[^\u0009-\u000D\u001C-\u0020\u0085\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF]&#x27;
+      description: |
+        1 至 100 个 Unicode 码点，至少一个不属于 pattern 中显式空白集合的字符；
+        不自动 trim。不依赖各编程语言 \s/\S 的差异定义。
+    Description:
+      type: [string, &#x27;null&#x27;]
+      maxLength: 2000
+      description: 最多 2000 个 Unicode 码点；空字符串与 null 区分
+    CreateProject:
+      type: object
+      additionalProperties: false
+      required: [displayName]
+      properties:
+        displayName:
+          $ref: &#x27;#/components/schemas/DisplayName&#x27;
+        description:
+          $ref: &#x27;#/components/schemas/Description&#x27;
+    UpdateProject:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        displayName:
+          $ref: &#x27;#/components/schemas/DisplayName&#x27;
+        description:
+          $ref: &#x27;#/components/schemas/Description&#x27;
+    Project:
+      type: object
+      additionalProperties: true
+      required: [id, displayName, description, createdAt, updatedAt, version]
+      properties:
+        id:
+          $ref: &#x27;#/components/schemas/ProjectId&#x27;
+        displayName:
+          $ref: &#x27;#/components/schemas/DisplayName&#x27;
+        description:
+          $ref: &#x27;#/components/schemas/Description&#x27;
+        createdAt:
+          type: string
+          format: date-time
+          pattern: &#x27;Z$&#x27;
+          description: UTC RFC 3339 时间，创建后不可变
+        updatedAt:
+          type: string
+          format: date-time
+          pattern: &#x27;Z$&#x27;
+          description: UTC RFC 3339 时间
+        version:
+          type: integer
+          minimum: 1
+          maximum: 9007199254740991
+          description: JS 安全整数；强 ETag 对应版本，每次成功 PATCH 原子递增
+    ProjectPage:
+      type: object
+      additionalProperties: true
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: &#x27;#/components/schemas/Project&#x27;
+        nextCursor:
+          type: [string, &#x27;null&#x27;]
+          minLength: 1
+          maxLength: 2048
+    ValidationError:
+      type: object
+      additionalProperties: true
+      required: [location, pointer, code, message]
+      properties:
+        location:
+          type: string
+          enum: [body, query, path, header]
+        pointer:
+          type: string
+          description: 在对应 location 容器内的 RFC 6901 JSON Pointer；根为 &quot;&quot;
+          pattern: &#x27;^(?:/(?:[^~/]|~[01])*)*$&#x27;
+        code:
+          type: string
+          minLength: 1
+          maxLength: 64
+        message:
+          type: string
+          maxLength: 1000
+    Problem:
+      type: object
+      additionalProperties: true
+      required: [type, title, status, code, traceId]
+      properties:
+        type:
+          type: string
+          format: uri
+          description: 稳定问题类型 URI；部署前配置到自有文档域名
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+          description: 必须与实际 HTTP 状态码一致
+        detail:
+          type: string
+          maxLength: 2000
+          description: 安全的人类可读说明，不包含堆栈、SQL、令牌或内部地址
+        instance:
+          type: string
+          format: uri-reference
+          description: 不含敏感请求参数的问题实例标识
+        code:
+          type: string
+          pattern: &#x27;^[A-Z][A-Z0-9_]{0,63}$&#x27;
+          description: 客户端用于分支判断的稳定业务码；未知值回退通用处理
+        traceId:
+          $ref: &#x27;#/components/schemas/TraceId&#x27;
+          description: 服务端分配的请求链路标识，不能作为授权凭证
+        errors:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: &#x27;#/components/schemas/ValidationError&#x27;
+      allOf:
+        - if:
+            properties:
+              status:
+                const: 422
+            required: [status]
+          then:
+            additionalProperties: true
+            properties:
+              errors: {}
+            required: [errors]
+  responses:
+    BadRequest:
+      description: JSON 语法/重复键、参数、游标、必填 Idempotency-Key 或 If-Match 格式错误
+      headers:
+        X-Request-Id:
+          $ref: &#x27;#/components/headers/RequestId&#x27;
+        Cache-Control:
+          $ref: &#x27;#/components/headers/NoStore&#x27;
+      content:
+        application/problem+json:
+          schema:
+            $ref: &#x27;#/components/schemas/Problem&#x27;
+          example:
+            type: https://api.example.com/problems/bad-request
+            title: Invalid request
+            status: 400
+            code: BAD_REQUEST
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+    Unauthorized:
+      description: 缺少或无效访问令牌；缺少令牌时 challenge 不附 error 字段
+      headers:
+        X-Request-Id:
+          $ref: &#x27;#/components/headers/RequestId&#x27;
+        WWW-Authenticate:
+          description: 缺少令牌用 Bearer realm=&quot;projects&quot;；无效令牌可附 error=&quot;invalid_token&quot;
+          required: true
+          schema:
+            type: string
+          example: &#x27;Bearer realm=&quot;projects&quot;&#x27;
+        Cache-Control:
+          $ref: &#x27;#/components/headers/NoStore&#x27;
+      content:
+        application/problem+json:
+          schema:
+            $ref: &#x27;#/components/schemas/Problem&#x27;
+          example:
+            type: https://api.example.com/problems/unauthorized
+            title: Authentication required
+            status: 401
+            code: UNAUTHORIZED
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+    Forbidden:
+      description: 已认证但缺少所需 scope 或无租户操作权限；对象不可见统一返回 404
+      headers:
+        X-Request-Id:
+          $ref: &#x27;#/components/headers/RequestId&#x27;
+        Cache-Control:
+          $ref: &#x27;#/components/headers/NoStore&#x27;
+      content:
+        application/problem+json:
+          schema:
+            $ref: &#x27;#/components/schemas/Problem&#x27;
+          example:
+            type: https://api.example.com/problems/forbidden
+            title: Permission denied
+            status: 403
+            code: FORBIDDEN
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+    NotFound:
+      description: 项目不存在或对当前授权上下文不可见
+      headers:
+        X-Request-Id:
+          $ref: &#x27;#/components/headers/RequestId&#x27;
+        Cache-Control:
+          $ref: &#x27;#/components/headers/NoStore&#x27;
+      content:
+        application/problem+json:
+          schema:
+            $ref: &#x27;#/components/schemas/Problem&#x27;
+          example:
+            type: https://api.example.com/problems/not-found
+            title: Project not found
+            status: 404
+            code: NOT_FOUND
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+    Conflict:
+      description: |
+        IDEMPOTENCY_KEY_REUSED 表示同键不同指纹，须停止自动重试；
+        IDEMPOTENCY_IN_PROGRESS 表示原请求未完成，稍后可使用原键重试。
+      headers:
+        X-Request-Id:
+          $ref: &#x27;#/components/headers/RequestId&#x27;
+        Retry-After:
+          description: 仅 IDEMPOTENCY_IN_PROGRESS 响应必须发送，单位整数秒；REUSED 不提供重试建议
+          schema:
+            type: string
+            pattern: &#x27;^[0-9]+$&#x27;
+          example: &#x27;3&#x27;
+        Cache-Control:
+          $ref: &#x27;#/components/headers/NoStore&#x27;
+      content:
+        application/problem+json:
+          schema:
+            $ref: &#x27;#/components/schemas/Problem&#x27;
+          examples:
+            reused:
+              value:
+                type: https://api.example.com/problems/idempotency-key-reused
+                title: Idempotency key reused
+                status: 409
+                code: IDEMPOTENCY_KEY_REUSED
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+            inProgress:
+              value:
+                type: https://api.example.com/problems/idempotency-in-progress
+                title: Original request is still in progress
+                status: 409
+                code: IDEMPOTENCY_IN_PROGRESS
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+    PreconditionFailed:
+      description: If-Match 与当前 ETag 不一致；重新读取后由用户或业务策略合并
+      headers:
+        X-Request-Id:
+          $ref: &#x27;#/components/headers/RequestId&#x27;
+        Cache-Control:
+          $ref: &#x27;#/components/headers/NoStore&#x27;
+      content:
+        application/problem+json:
+          schema:
+            $ref: &#x27;#/components/schemas/Problem&#x27;
+          example:
+            type: https://api.example.com/problems/precondition-failed
+            title: Resource version changed
+            status: 412
+            code: PRECONDITION_FAILED
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+    UnsupportedMediaType:
+      description: 请求 Content-Type 不受支持；POST 要求 application/json，PATCH 要求 application/merge-patch+json
+      headers:
+        X-Request-Id:
+          $ref: &#x27;#/components/headers/RequestId&#x27;
+        Cache-Control:
+          $ref: &#x27;#/components/headers/NoStore&#x27;
+      content:
+        application/problem+json:
+          schema:
+            $ref: &#x27;#/components/schemas/Problem&#x27;
+          example:
+            type: https://api.example.com/problems/unsupported-media-type
+            title: Unsupported media type
+            status: 415
+            code: UNSUPPORTED_MEDIA_TYPE
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+    ValidationFailed:
+      description: 请求体 JSON 合法，但字段类型、必填项、未知字段或业务校验失败
+      headers:
+        X-Request-Id:
+          $ref: &#x27;#/components/headers/RequestId&#x27;
+        Cache-Control:
+          $ref: &#x27;#/components/headers/NoStore&#x27;
+      content:
+        application/problem+json:
+          schema:
+            $ref: &#x27;#/components/schemas/Problem&#x27;
+          example:
+            type: https://api.example.com/problems/validation-failed
+            title: Request validation failed
+            status: 422
+            code: VALIDATION_FAILED
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+            errors:
+              - location: body
+                pointer: /displayName
+                code: REQUIRED
+                message: displayName is required
+    PreconditionRequired:
+      description: 缺少必填的 If-Match 请求头
+      headers:
+        X-Request-Id:
+          $ref: &#x27;#/components/headers/RequestId&#x27;
+        Cache-Control:
+          $ref: &#x27;#/components/headers/NoStore&#x27;
+      content:
+        application/problem+json:
+          schema:
+            $ref: &#x27;#/components/schemas/Problem&#x27;
+          example:
+            type: https://api.example.com/problems/precondition-required
+            title: If-Match header is required
+            status: 428
+            code: PRECONDITION_REQUIRED
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+    TooManyRequests:
+      description: 超出主体/租户速率或并发配额
+      headers:
+        X-Request-Id:
+          $ref: &#x27;#/components/headers/RequestId&#x27;
+        Retry-After:
+          $ref: &#x27;#/components/headers/RetryAfter&#x27;
+        Cache-Control:
+          $ref: &#x27;#/components/headers/NoStore&#x27;
+      content:
+        application/problem+json:
+          schema:
+            $ref: &#x27;#/components/schemas/Problem&#x27;
+          example:
+            type: https://api.example.com/problems/rate-limited
+            title: Too many requests
+            status: 429
+            code: RATE_LIMITED
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+    InternalError:
+      description: 服务端未预期错误；客户端不得根据 detail 内容分支
+      headers:
+        X-Request-Id:
+          $ref: &#x27;#/components/headers/RequestId&#x27;
+        Cache-Control:
+          $ref: &#x27;#/components/headers/NoStore&#x27;
+      content:
+        application/problem+json:
+          schema:
+            $ref: &#x27;#/components/schemas/Problem&#x27;
+          example:
+            type: https://api.example.com/problems/internal-error
+            title: Internal server error
+            status: 500
+            code: INTERNAL_ERROR
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+    Unavailable:
+      description: 临时过载、维护或依赖不可用；写操作的实际提交结果可能未知
+      headers:
+        X-Request-Id:
+          $ref: &#x27;#/components/headers/RequestId&#x27;
+        Retry-After:
+          $ref: &#x27;#/components/headers/RetryAfter&#x27;
+        Cache-Control:
+          $ref: &#x27;#/components/headers/NoStore&#x27;
+      content:
+        application/problem+json:
+          schema:
+            $ref: &#x27;#/components/schemas/Problem&#x27;
+          example:
+            type: https://api.example.com/problems/unavailable
+            title: Service temporarily unavailable
+            status: 503
+            code: UNAVAILABLE
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+</code></pre></details></main></div></body></html>

@@ -1,0 +1,7 @@
+extends:
+  - recommended
+rules:
+  # Reference material: no project license has been selected by its owner.
+  info-license: off
+  # Reserved example domains are deliberate deployment placeholders.
+  no-server-example.com: off

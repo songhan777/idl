@@ -1,0 +1,6 @@
+# Deliberate compatibility baseline, not a claim to be the latest releases.
+# These are the direct inputs. Install requirements-contract.lock for the
+# complete resolved set used by this delivery and CI.
+PyYAML==6.0.2
+jsonschema[format]==4.23.0
+openapi-spec-validator==0.7.2

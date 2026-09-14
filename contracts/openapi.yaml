@@ -1,0 +1,778 @@
+openapi: 3.1.0
+jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
+info:
+  title: Project API
+  version: 1.0.0
+  description: |
+    本项目 HTTP+JSON 契约。所有地址均为待替换的 example.com 示例。
+    服务端从已验证访问令牌的授权上下文确定租户，并逐资源校验权限。
+    浏览器使用 Authorization Code + PKCE S256，禁止在浏览器存储客户端密钥。
+    所有响应（包括错误）发送 Cache-Control: no-store, no-transform。
+    单项 JSON 使用稳定的 UTF-8 序列化和 identity 内容编码，网关不得压缩或转换。
+    相同资源相同 version 的表示字节必须稳定；任何表示变化须递增 version。
+    更换序列化规则须迁移所有受影响资源版本或发布新的 API 主版本。
+    未声明查询参数与重复的单值参数返回 400；请求 JSON 重复键在解析层拒绝。
+    本契约支持单个强 If-Match ETag，不接受弱 ETag、列表或 *。
+servers:
+  - url: https://api.example.com
+    description: 示例；部署前替换
+tags:
+  - name: Projects
+    description: 当前授权租户内的项目
+paths:
+  /v1/projects:
+    get:
+      tags: [Projects]
+      operationId: listProjects
+      summary: 分页列出项目
+      description: |
+        按 createdAt ASC、id ASC 稳定排序。游标绑定租户、过滤条件和排序，
+        服务端校验完整性；不得包含明文敏感数据。游标有效期 15 分钟。
+        过期/无效游标返回 400，code=INVALID_CURSOR。
+        这是实时 keyset 分页，不提供跨页快照保证。nextCursor=null 表示结束。
+      security:
+        - oauth2: [projects:read]
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: 项目列表；无数据时 items=[] 且 nextCursor=null
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/RequestId'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectPage'
+              example:
+                items:
+                  - id: 6c1d9950-8fa5-4c0e-bb8f-d875fe4c4e7c
+                    displayName: 示例项目
+                    description: null
+                    createdAt: '2026-09-14T08:00:00Z'
+                    updatedAt: '2026-09-14T08:00:00Z'
+                    version: 1
+                nextCursor: null
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+    post:
+      tags: [Projects]
+      operationId: createProject
+      summary: 创建项目
+      description: |
+        Idempotency-Key 必填，作用域为租户+主体+operationId。
+        从终态完成时起保留至少 24 小时；不得按 TTL 清理 IN_PROGRESS/UNKNOWN 状态。
+        同键同指纹重放原状态、响应体和 Location/ETag；不重做业务写入。
+        同键不同指纹或原请求仍在执行返回 409，以 code 区分。
+        创建 displayName 无唯一性要求。description 未提供时存储为空。
+      security:
+        - oauth2: [projects:write]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProject'
+            example:
+              displayName: 示例项目
+              description: null
+      responses:
+        '201':
+          description: 创建成功；重复提交可重放最初的 201
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/RequestId'
+            Location:
+              description: 新资源的相对路径
+              required: true
+              schema:
+                type: string
+                pattern: '^/v1/projects/[0-9a-f-]{36}$'
+              example: /v1/projects/6c1d9950-8fa5-4c0e-bb8f-d875fe4c4e7c
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+              example:
+                id: 6c1d9950-8fa5-4c0e-bb8f-d875fe4c4e7c
+                displayName: 示例项目
+                description: null
+                createdAt: '2026-09-14T08:00:00Z'
+                updatedAt: '2026-09-14T08:00:00Z'
+                version: 1
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /v1/projects/{projectId}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      tags: [Projects]
+      operationId: getProject
+      summary: 查询项目
+      description: 不存在、其他租户或对当前主体不可见的项目均返回 404。
+      security:
+        - oauth2: [projects:read]
+      responses:
+        '200':
+          description: 项目详情
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/RequestId'
+            ETag:
+              $ref: '#/components/headers/ETag'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+              example:
+                id: 6c1d9950-8fa5-4c0e-bb8f-d875fe4c4e7c
+                displayName: 示例项目
+                description: null
+                createdAt: '2026-09-14T08:00:00Z'
+                updatedAt: '2026-09-14T08:00:00Z'
+                version: 1
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+    patch:
+      tags: [Projects]
+      operationId: updateProject
+      summary: 部分更新项目
+      description: |
+        Merge Patch：字段缺省表示不修改，description:null 移除成员，
+        业务层将清除后的 description 在完整响应中规范化为 null。
+        displayName:null、空对象和未知字段均返回 422。不接受整个文档 null。
+        If-Match 必须等于当前强 ETag，否则返回 412。校验与写入必须原子化。
+        每次成功接受的 PATCH（包括同值赋值）递增 version，并更新 updatedAt。
+      security:
+        - oauth2: [projects:write]
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: '#/components/schemas/UpdateProject'
+            example:
+              description: null
+      responses:
+        '200':
+          description: 更新后的完整项目
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/RequestId'
+            ETag:
+              description: 对应更新后 version 的强 ETag
+              required: true
+              schema:
+                $ref: '#/components/schemas/VersionETag'
+              example: '"2"'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+              example:
+                id: 6c1d9950-8fa5-4c0e-bb8f-d875fe4c4e7c
+                displayName: 示例项目
+                description: null
+                createdAt: '2026-09-14T08:00:00Z'
+                updatedAt: '2026-09-14T08:10:00Z'
+                version: 2
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+    delete:
+      tags: [Projects]
+      operationId: deleteProject
+      summary: 删除项目
+      description: |
+        If-Match 校验与删除原子执行。成功返回 204，无响应体、无 Content-Type。
+        资源已删除时返回 404；HTTP 幂等性不要求重复请求状态码相同。
+      security:
+        - oauth2: [projects:write]
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '204':
+          description: 删除成功，无响应体
+          headers:
+            X-Request-Id:
+              $ref: '#/components/headers/RequestId'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+components:
+  securitySchemes:
+    oauth2:
+      type: oauth2
+      description: |
+        Authorization Code + PKCE S256 为本平台强制策略；OAuth2 流定义本身不能强制 PKCE。
+        访问令牌通过 Authorization: Bearer 发送；认证服务与资源服务落实 PKCE、issuer、
+        audience、有效期、scope 及租户/对象级权限校验。
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.example.com/oauth2/authorize
+          tokenUrl: https://auth.example.com/oauth2/token
+          scopes:
+            projects:read: 查询当前授权租户内项目
+            projects:write: 创建、修改和删除当前授权租户内项目
+  parameters:
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      description: 项目 UUID，按规范小写字符串传输
+      schema:
+        $ref: '#/components/schemas/ProjectId'
+      example: 6c1d9950-8fa5-4c0e-bb8f-d875fe4c4e7c
+    Limit:
+      name: limit
+      in: query
+      description: 单页上限，服务端必须显式实现缺省值 20
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+      example: 20
+    Cursor:
+      name: cursor
+      in: query
+      description: 不透明游标；首次请求省略，客户端不得解析或构造
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 2048
+      example: eyJwb3MiOiJleGFtcGxlIn0.signature
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        每个逻辑创建操作生成一个高熵随机标识，例如 UUIDv4；网络重试复用同一值。
+        自定义随机值建议至少 128 位熵；UUIDv4 包含 122 个随机位。
+        缺失或格式不合法返回 400。本项目采用不加引号的 ASCII header 值协议。
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 128
+        pattern: '^[A-Za-z0-9_-]+$'
+      example: 7ce2f671-36d4-4756-863b-4e7c225d4a31
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: |
+        单个强 ETag，例如双引号包裹的版本号 "1"。缺失返回 428，
+        格式无效、弱 ETag、列表或 * 返回 400，合法但不匹配返回 412。
+      schema:
+        $ref: '#/components/schemas/VersionETag'
+      example: '"1"'
+  headers:
+    RequestId:
+      description: |
+        服务端为本次请求分配的 32 位小写十六进制非全零标识，浏览器可用于反馈故障。
+        新生成错误与正文 traceId 相同；终态错误回放保留原正文 traceId，
+        本头仍标识当前请求，服务端日志记录本次与历史请求的关联。
+      required: true
+      schema:
+        $ref: '#/components/schemas/TraceId'
+      example: 4bf92f3577b34da6a3ce929d0e0e4736
+    ETag:
+      description: |
+        必须是对应响应体 version 的强验证器，例如 version=1 对应 "1"。
+        同一资源相同 version 的表示字节必须稳定；更改表示或编码策略应更换验证器。
+      required: true
+      schema:
+        $ref: '#/components/schemas/VersionETag'
+      example: '"1"'
+    NoStore:
+      description: 本项目默认禁用浏览器及共享缓存保存响应
+      required: true
+      schema:
+        type: string
+        const: no-store, no-transform
+      example: no-store, no-transform
+    RetryAfter:
+      description: 本项目固定使用整数秒；客户端加入抖动并受总超时和重试上限约束
+      required: true
+      schema:
+        type: string
+        pattern: '^[0-9]+$'
+      example: '3'
+  schemas:
+    TraceId:
+      type: string
+      pattern: '^[0-9a-f]{32}$'
+      not:
+        const: '00000000000000000000000000000000'
+    ProjectId:
+      type: string
+      format: uuid
+      pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    VersionETag:
+      type: string
+      pattern: '^"[1-9][0-9]*"$'
+    DisplayName:
+      type: string
+      minLength: 1
+      maxLength: 100
+      pattern: '[^\u0009-\u000D\u001C-\u0020\u0085\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF]'
+      description: |
+        1 至 100 个 Unicode 码点，至少一个不属于 pattern 中显式空白集合的字符；
+        不自动 trim。不依赖各编程语言 \s/\S 的差异定义。
+    Description:
+      type: [string, 'null']
+      maxLength: 2000
+      description: 最多 2000 个 Unicode 码点；空字符串与 null 区分
+    CreateProject:
+      type: object
+      additionalProperties: false
+      required: [displayName]
+      properties:
+        displayName:
+          $ref: '#/components/schemas/DisplayName'
+        description:
+          $ref: '#/components/schemas/Description'
+    UpdateProject:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        displayName:
+          $ref: '#/components/schemas/DisplayName'
+        description:
+          $ref: '#/components/schemas/Description'
+    Project:
+      type: object
+      additionalProperties: true
+      required: [id, displayName, description, createdAt, updatedAt, version]
+      properties:
+        id:
+          $ref: '#/components/schemas/ProjectId'
+        displayName:
+          $ref: '#/components/schemas/DisplayName'
+        description:
+          $ref: '#/components/schemas/Description'
+        createdAt:
+          type: string
+          format: date-time
+          pattern: 'Z$'
+          description: UTC RFC 3339 时间，创建后不可变
+        updatedAt:
+          type: string
+          format: date-time
+          pattern: 'Z$'
+          description: UTC RFC 3339 时间
+        version:
+          type: integer
+          minimum: 1
+          maximum: 9007199254740991
+          description: JS 安全整数；强 ETag 对应版本，每次成功 PATCH 原子递增
+    ProjectPage:
+      type: object
+      additionalProperties: true
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/Project'
+        nextCursor:
+          type: [string, 'null']
+          minLength: 1
+          maxLength: 2048
+    ValidationError:
+      type: object
+      additionalProperties: true
+      required: [location, pointer, code, message]
+      properties:
+        location:
+          type: string
+          enum: [body, query, path, header]
+        pointer:
+          type: string
+          description: 在对应 location 容器内的 RFC 6901 JSON Pointer；根为 ""
+          pattern: '^(?:/(?:[^~/]|~[01])*)*$'
+        code:
+          type: string
+          minLength: 1
+          maxLength: 64
+        message:
+          type: string
+          maxLength: 1000
+    Problem:
+      type: object
+      additionalProperties: true
+      required: [type, title, status, code, traceId]
+      properties:
+        type:
+          type: string
+          format: uri
+          description: 稳定问题类型 URI；部署前配置到自有文档域名
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+          description: 必须与实际 HTTP 状态码一致
+        detail:
+          type: string
+          maxLength: 2000
+          description: 安全的人类可读说明，不包含堆栈、SQL、令牌或内部地址
+        instance:
+          type: string
+          format: uri-reference
+          description: 不含敏感请求参数的问题实例标识
+        code:
+          type: string
+          pattern: '^[A-Z][A-Z0-9_]{0,63}$'
+          description: 客户端用于分支判断的稳定业务码；未知值回退通用处理
+        traceId:
+          $ref: '#/components/schemas/TraceId'
+          description: 服务端分配的请求链路标识，不能作为授权凭证
+        errors:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/ValidationError'
+      allOf:
+        - if:
+            properties:
+              status:
+                const: 422
+            required: [status]
+          then:
+            additionalProperties: true
+            properties:
+              errors: {}
+            required: [errors]
+  responses:
+    BadRequest:
+      description: JSON 语法/重复键、参数、游标、必填 Idempotency-Key 或 If-Match 格式错误
+      headers:
+        X-Request-Id:
+          $ref: '#/components/headers/RequestId'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://api.example.com/problems/bad-request
+            title: Invalid request
+            status: 400
+            code: BAD_REQUEST
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+    Unauthorized:
+      description: 缺少或无效访问令牌；缺少令牌时 challenge 不附 error 字段
+      headers:
+        X-Request-Id:
+          $ref: '#/components/headers/RequestId'
+        WWW-Authenticate:
+          description: 缺少令牌用 Bearer realm="projects"；无效令牌可附 error="invalid_token"
+          required: true
+          schema:
+            type: string
+          example: 'Bearer realm="projects"'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://api.example.com/problems/unauthorized
+            title: Authentication required
+            status: 401
+            code: UNAUTHORIZED
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+    Forbidden:
+      description: 已认证但缺少所需 scope 或无租户操作权限；对象不可见统一返回 404
+      headers:
+        X-Request-Id:
+          $ref: '#/components/headers/RequestId'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://api.example.com/problems/forbidden
+            title: Permission denied
+            status: 403
+            code: FORBIDDEN
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+    NotFound:
+      description: 项目不存在或对当前授权上下文不可见
+      headers:
+        X-Request-Id:
+          $ref: '#/components/headers/RequestId'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://api.example.com/problems/not-found
+            title: Project not found
+            status: 404
+            code: NOT_FOUND
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+    Conflict:
+      description: |
+        IDEMPOTENCY_KEY_REUSED 表示同键不同指纹，须停止自动重试；
+        IDEMPOTENCY_IN_PROGRESS 表示原请求未完成，稍后可使用原键重试。
+      headers:
+        X-Request-Id:
+          $ref: '#/components/headers/RequestId'
+        Retry-After:
+          description: 仅 IDEMPOTENCY_IN_PROGRESS 响应必须发送，单位整数秒；REUSED 不提供重试建议
+          schema:
+            type: string
+            pattern: '^[0-9]+$'
+          example: '3'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          examples:
+            reused:
+              value:
+                type: https://api.example.com/problems/idempotency-key-reused
+                title: Idempotency key reused
+                status: 409
+                code: IDEMPOTENCY_KEY_REUSED
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+            inProgress:
+              value:
+                type: https://api.example.com/problems/idempotency-in-progress
+                title: Original request is still in progress
+                status: 409
+                code: IDEMPOTENCY_IN_PROGRESS
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+    PreconditionFailed:
+      description: If-Match 与当前 ETag 不一致；重新读取后由用户或业务策略合并
+      headers:
+        X-Request-Id:
+          $ref: '#/components/headers/RequestId'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://api.example.com/problems/precondition-failed
+            title: Resource version changed
+            status: 412
+            code: PRECONDITION_FAILED
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+    UnsupportedMediaType:
+      description: 请求 Content-Type 不受支持；POST 要求 application/json，PATCH 要求 application/merge-patch+json
+      headers:
+        X-Request-Id:
+          $ref: '#/components/headers/RequestId'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://api.example.com/problems/unsupported-media-type
+            title: Unsupported media type
+            status: 415
+            code: UNSUPPORTED_MEDIA_TYPE
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+    ValidationFailed:
+      description: 请求体 JSON 合法，但字段类型、必填项、未知字段或业务校验失败
+      headers:
+        X-Request-Id:
+          $ref: '#/components/headers/RequestId'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://api.example.com/problems/validation-failed
+            title: Request validation failed
+            status: 422
+            code: VALIDATION_FAILED
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+            errors:
+              - location: body
+                pointer: /displayName
+                code: REQUIRED
+                message: displayName is required
+    PreconditionRequired:
+      description: 缺少必填的 If-Match 请求头
+      headers:
+        X-Request-Id:
+          $ref: '#/components/headers/RequestId'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://api.example.com/problems/precondition-required
+            title: If-Match header is required
+            status: 428
+            code: PRECONDITION_REQUIRED
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+    TooManyRequests:
+      description: 超出主体/租户速率或并发配额
+      headers:
+        X-Request-Id:
+          $ref: '#/components/headers/RequestId'
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://api.example.com/problems/rate-limited
+            title: Too many requests
+            status: 429
+            code: RATE_LIMITED
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+    InternalError:
+      description: 服务端未预期错误；客户端不得根据 detail 内容分支
+      headers:
+        X-Request-Id:
+          $ref: '#/components/headers/RequestId'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://api.example.com/problems/internal-error
+            title: Internal server error
+            status: 500
+            code: INTERNAL_ERROR
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+    Unavailable:
+      description: 临时过载、维护或依赖不可用；写操作的实际提交结果可能未知
+      headers:
+        X-Request-Id:
+          $ref: '#/components/headers/RequestId'
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://api.example.com/problems/unavailable
+            title: Service temporarily unavailable
+            status: 503
+            code: UNAVAILABLE
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736

@@ -1,0 +1,29 @@
+{
+  "name": "production-idl-reference",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.19.0",
+  "engines": {
+    "node": ">=24.19.0 <25",
+    "pnpm": "11.19.0"
+  },
+  "scripts": {
+    "lint": "redocly lint contracts/openapi.yaml",
+    "generate": "openapi-typescript contracts/openapi.yaml --output examples/typescript/schema.d.ts",
+    "check:generated": "openapi-typescript contracts/openapi.yaml --output examples/typescript/schema.d.ts --check",
+    "typecheck": "tsc --noEmit",
+    "test:client": "node --experimental-strip-types --test examples/typescript/client.test.ts",
+    "validate": "pnpm lint && pnpm check:generated && pnpm typecheck && pnpm test:client"
+  },
+  "dependencies": {
+    "openapi-fetch": "0.17.0"
+  },
+  "devDependencies": {
+    "@redocly/cli": "2.53.0",
+    "@types/node": "24.10.13",
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3",
+    "yaml": "2.9.1"
+  }
+}
